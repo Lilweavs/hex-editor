@@ -67,8 +67,8 @@ int cursor_y = 0;
 std::vector<std::vector<std::string>> hex_strings;
 std::vector<std::string> ascii_strings;
 std::vector<std::string> row_strings;
+std::array<std::string, 10> byte_interpreter_strings;
 
-std::vector<std::vector<ftxui::Element *>> references;
 
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
 
@@ -96,6 +96,20 @@ void scrollScreen(int row, int col, int cursor_y) {
         }
         ascii_strings.at(i - start) = std::string(tmp);
     }
+}
+
+void updateByteInterpreter(int row, int col) {
+    int idx = row*16 + col;
+    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(&input_file_buffer[idx]));    
 }
 
 int main() {
@@ -167,12 +181,28 @@ int main() {
                 bytes.push_back(separatorEmpty());
             }
         }
-        references.push_back(ref);
         view.push_back(hbox(bytes));
     }
 
     std::string answer = "";
     Component hex_editor_view = Input(&answer, "0x00");
+    
+
+    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(&input_file_buffer[0]));    
+
+    std::vector<Element> data_interpreter_view;
+    for (auto& str : byte_interpreter_strings) {
+        data_interpreter_view.push_back(dynamictext(str));
+    }
 
     // Create Modal Layers
     auto hex_editor_renderer = Renderer([&] {
@@ -186,9 +216,13 @@ int main() {
             text(std::to_string(global_position) + ":" + std::to_string(yloc) + " V: " + std::to_string(num_viewable_rows)),
             separator(),
             hbox({
-                vbox(rowByteIndex) | size(WIDTH, EQUAL, 4), separator(),
-                vbox(view) | size(WIDTH, EQUAL, 3 * 16 - 1), separator(),
-                vflow(rowByteAscii) | size(WIDTH, EQUAL, 16)
+                vbox(rowByteIndex) | size(WIDTH, EQUAL, 4),
+                separator(),
+                vbox(view) | size(WIDTH, EQUAL, 3 * 16 - 1),
+                separator(),
+                vbox(rowByteAscii) | size(WIDTH, EQUAL, 16),
+                separator(),
+                vbox(data_interpreter_view)
             })
         }) | border;
     });
@@ -200,7 +234,7 @@ int main() {
             current_view = dbox({current_view, hex_editor_renderer->Render() | center});
         }
 
-        return current_view | size(WIDTH, EQUAL, 72);
+        return current_view | size(WIDTH, EQUAL, 103);
     });
 
     main_window_renderer |= CatchEvent([&](Event event) {
@@ -256,6 +290,7 @@ int main() {
             }
 
             view.at(cursor_y)->GetChildren().at(cursor_x * 2) |= inverted;
+            updateByteInterpreter(yloc, xloc);
         }
 
         return true;
