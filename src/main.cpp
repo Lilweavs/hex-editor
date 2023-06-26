@@ -86,7 +86,7 @@ void scrollScreen(int row, int col, int cursor_y) {
 
     char tmp[17] = {0};
     for (int i = start; i < end; i++) {
-        row_strings.at(i - start) = std::format("{:04X}", i * 16);
+        row_strings.at(i - start) = std::format("{:08X}", i * 16);
         for (int j = 0; j < 16; j++) {
             char val = input_file_buffer[i * 16 + j];
             hex_strings.at(i - start).at(j) =
@@ -130,7 +130,7 @@ int main() {
 
     Elements rowByteIndex;
     for (int i = 0; i < num_viewable_rows; i++) {
-        row_strings.push_back(std::format("{:04X}", i * 16));
+        row_strings.push_back(std::format("{:08X}", i * 16));
         rowByteIndex.push_back(dynamictext(row_strings.back()) | dim);
     }
 
@@ -216,7 +216,7 @@ int main() {
             text(std::to_string(global_position) + ":" + std::to_string(yloc) + " V: " + std::to_string(num_viewable_rows)),
             separator(),
             hbox({
-                vbox(rowByteIndex) | size(WIDTH, EQUAL, 4),
+                vbox(rowByteIndex) | size(WIDTH, EQUAL, 8),
                 separator(),
                 vbox(view) | size(WIDTH, EQUAL, 3 * 16 - 1),
                 separator(),
@@ -234,7 +234,7 @@ int main() {
             current_view = dbox({current_view, hex_editor_renderer->Render() | center});
         }
 
-        return current_view | size(WIDTH, EQUAL, 103);
+        return current_view | size(WIDTH, EQUAL, 107);
     });
 
     main_window_renderer |= CatchEvent([&](Event event) {
