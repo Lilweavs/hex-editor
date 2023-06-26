@@ -14,6 +14,7 @@
 #include <memory> // for allocator, __shared_ptr_access, shared_ptr
 #include <string> // for string
 #include <thread>
+#include <filesystem>
 
 #define MAX_ROWS 12
 #define X_OFFSET 1
@@ -112,7 +113,22 @@ void updateByteInterpreter(int row, int col) {
     byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(&input_file_buffer[idx]));    
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+
+    std::filesystem::path file_path;
+    
+    if (argc <= 1) {
+        std::cout << "Error: no input file provided\n>>> HexEditor.exe [filePath]" << std::endl;
+        return -1;
+    } 
+
+    file_path = std::filesystem::absolute(std::string(argv[1]));
+    if (!std::filesystem::exists(file_path)) {
+        std::cout << "File does not exist: " << file_path << std::endl;
+        return -1;
+    }
+
+    
     using namespace ftxui;
 
     // TODO: Move to non-vector type to gaurantee no reallocations
@@ -121,7 +137,7 @@ int main() {
     ascii_strings.reserve(100);
     row_strings.reserve(100);
 
-    std::ifstream file("your_file_here", std::ios::binary);
+    std::ifstream file(file_path, std::ios::binary);
     file.read(input_file_buffer, BUFFER_SIZE);
 
     auto screen = ScreenInteractive::Fullscreen();
