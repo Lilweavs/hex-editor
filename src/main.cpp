@@ -224,7 +224,7 @@ int main(int argc, char* argv[]) {
     auto hex_editor_renderer = Renderer([&] {
     return window(
         text("Hex Editor") | hcenter,
-        hex_editor_view->Render() | hcenter) | size(WIDTH, EQUAL, 12) | size(HEIGHT, EQUAL, 3);
+        hex_editor_view->Render() | hcenter) | size(WIDTH, EQUAL, 14) | size(HEIGHT, EQUAL, 3) | clear_under;
     });
 
     auto hex_viewer_renderer = Renderer([&] {
