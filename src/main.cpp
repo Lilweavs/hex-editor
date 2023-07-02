@@ -2,6 +2,8 @@
 #include "ftxui/component/loop.hpp"
 #include "ftxui/component/screen_interactive.hpp" // for ScreenInteractive
 #include "ftxui/dom/elements.hpp" // for operator|, separator, text, Element, flex, vbox, border
+#include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <format>
@@ -15,9 +17,8 @@
 #include <string> // for string
 #include <thread>
 #include <filesystem>
-
-#define MAX_ROWS 12
-#define X_OFFSET 1
+#include <HexObject.hpp>
+#include <cassert>
 
 class DynamicText : public ftxui::Node {
 public:
@@ -53,11 +54,10 @@ ftxui::Element dynamictext(std::string &text) {
     return std::make_shared<DynamicText>(text);
 }
 
-#define BUFFER_SIZE 1024
-char input_file_buffer[BUFFER_SIZE] = {0};
+HexObject hexObject;
 
-int max_rows = BUFFER_SIZE / 16;
-
+int max_rows = 0;
+ 
 int num_viewable_rows = 0;
 
 int global_position = 0;
@@ -70,8 +70,20 @@ std::vector<std::string> ascii_strings;
 std::vector<std::string> row_strings;
 std::array<std::string, 10> byte_interpreter_strings;
 
-
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
+
+
+void update_row(int row, int cursor_y) {
+    
+    char tmp[17] = {0};
+    for (int j = 0; j < 16; j++) {
+        char val = hexObject.at(row * 16 + j);
+        hex_strings.at(cursor_y).at(j) = std::format("{:02X}", static_cast<uint8_t>(val));
+
+        tmp[j] = (val >= ' ' && val < '~') ? val : '.';
+    }
+    ascii_strings.at(cursor_y) = std::string(tmp);
+}
 
 void scrollScreen(int row, int col, int cursor_y) {
 
@@ -88,29 +100,22 @@ void scrollScreen(int row, int col, int cursor_y) {
     char tmp[17] = {0};
     for (int i = start; i < end; i++) {
         row_strings.at(i - start) = std::format("{:08X}", i * 16);
-        for (int j = 0; j < 16; j++) {
-            char val = input_file_buffer[i * 16 + j];
-            hex_strings.at(i - start).at(j) =
-            std::format("{:02X}", static_cast<uint8_t>(val));
-
-            tmp[j] = (val >= ' ' && val < '~') ? val : '.';
-        }
-        ascii_strings.at(i - start) = std::string(tmp);
+        update_row(i, i - start);
     }
 }
 
 void updateByteInterpreter(int row, int col) {
     int idx = row*16 + col;
-    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(&input_file_buffer[idx]));    
-    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(&input_file_buffer[idx]));    
+    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<const uint8_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<const int8_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<const uint16_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<const int16_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<const uint32_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<const int32_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<const uint64_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<const int64_t*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<const float*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)));    
 }
 
 int main(int argc, char* argv[]) {
@@ -128,6 +133,9 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    hexObject.set_filepath(file_path);
+    size_t bytesRead = hexObject.get_binary_data_from_file();
+    max_rows = bytesRead / 16;
     
     using namespace ftxui;
 
@@ -136,9 +144,6 @@ int main(int argc, char* argv[]) {
     // locations
     ascii_strings.reserve(100);
     row_strings.reserve(100);
-
-    std::ifstream file(file_path, std::ios::binary);
-    file.read(input_file_buffer, BUFFER_SIZE);
 
     auto screen = ScreenInteractive::Fullscreen();
     auto screen_dim = Terminal::Size();
@@ -154,7 +159,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < num_viewable_rows; i++) {
         char tmp[17] = {0};
         for (int j = 0; j < 16; j++) {
-            char val = input_file_buffer[i * 16 + j];
+            char val = hexObject.at(i * 16 + j);
 
             tmp[j] = (val >= ' ' && val < '~') ? val : '.';
         }
@@ -174,7 +179,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < num_viewable_rows; i++) {
         std::vector<std::string> tmpStrings;
         for (int j = 0; j < 16; j++) {
-            tmpStrings.push_back(std::format("{:02X}", static_cast<uint8_t>(input_file_buffer[i * 16 + j])));
+            tmpStrings.push_back(std::format("{:02X}", static_cast<uint8_t>(hexObject.at(i * 16 + j))));
         }
         hex_strings.push_back(tmpStrings);
     }
@@ -204,16 +209,16 @@ int main(int argc, char* argv[]) {
     Component hex_editor_view = Input(&answer, "0x00");
     
 
-    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(&input_file_buffer[0]));    
-    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(&input_file_buffer[0]));    
+    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(hexObject.get_ptr_at_index(0)));    
+    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(hexObject.get_ptr_at_index(0)));    
 
     std::vector<Element> data_interpreter_view;
     for (auto& str : byte_interpreter_strings) {
@@ -255,15 +260,13 @@ int main(int argc, char* argv[]) {
 
     main_window_renderer |= CatchEvent([&](Event event) {
 
-        if (event == Event::Escape) { modalDepth = 0; }
+        if (event == Event::Escape) { modalDepth = 0; return true; }
 
-        if (modalDepth == 1) { return hex_editor_view->OnEvent(event); }
-
-        if (event.is_character()) {
-            const char c = event.character().at(0);
+        char c = event.character().at(0);
+        
+        if (modalDepth == 0) {
 
             view.at(cursor_y)->GetChildren().at(cursor_x * 2) |= inverted;
-
             switch (c) {
                 case 'l':
                     if (xloc < 15) {
@@ -307,6 +310,37 @@ int main(int argc, char* argv[]) {
 
             view.at(cursor_y)->GetChildren().at(cursor_x * 2) |= inverted;
             updateByteInterpreter(yloc, xloc);
+            
+        } else {
+
+            c = std::toupper(c);
+
+            if (event == Event::Return) {
+                int tmp = std::stoi(answer, nullptr, 16);
+                if (tmp > 0xFF) {
+                    assert("something went wrong");
+                } else {
+                    hexObject.set_byte(yloc*16 + xloc, static_cast<uint8_t>(tmp));
+                    update_row(yloc, cursor_y);
+                    global_position = tmp;
+                    return true;
+                }
+            }
+            
+            if (Event::Backspace == event || Event::ArrowLeft == event || Event::ArrowRight == event) {
+                return hex_editor_view->OnEvent(event);
+            }
+
+            if (answer.size() >= 4) { return true; }
+            
+            if (c == 'X') {
+                return hex_editor_view->OnEvent(Event::Character(static_cast<char>(std::tolower(c))));
+            }
+            
+            if (c <= '9' && c >= '0' || c <= 'F' && c >= 'A') {
+                return hex_editor_view->OnEvent(Event::Character(c));
+            }
+            
         }
 
         return true;
