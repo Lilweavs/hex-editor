@@ -15,6 +15,9 @@ public:
     ~HexObject();
 
     void set_filepath(std::filesystem::path filePath);
+
+    void save_file();
+
     size_t get_binary_data_from_file();
 
     void set_byte(int idx, uint8_t byte); 
@@ -25,6 +28,7 @@ public:
     
 private:
     std::filesystem::path _filePath;
+    size_t fileSizeInBytes;
     char* _data;
 };
 

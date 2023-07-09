@@ -19,12 +19,17 @@ void HexObject::set_filepath(std::filesystem::path filePath) {
 }
 
 size_t HexObject::get_binary_data_from_file() {
-    size_t fileSizeInBytes = std::filesystem::file_size(_filePath);
+    fileSizeInBytes = std::filesystem::file_size(_filePath);
     _data = new char[fileSizeInBytes]();
     std::ifstream file(_filePath, std::ios::binary);
     file.read(_data, fileSizeInBytes);
 
     return file.gcount();
+}
+
+void HexObject::save_file() {
+    std::ofstream file(_filePath, std::ios::binary);
+    file.write(_data, fileSizeInBytes); 
 }
 
 char* HexObject::get_ptr_at_index(int idx) {

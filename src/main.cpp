@@ -2,12 +2,6 @@
 #include "ftxui/component/loop.hpp"
 #include "ftxui/component/screen_interactive.hpp" // for ScreenInteractive
 #include "ftxui/dom/elements.hpp" // for operator|, separator, text, Element, flex, vbox, border
-#include <cctype>
-#include <cstddef>
-#include <cstdint>
-#include <cstdio>
-#include <format>
-#include <fstream>
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/node.hpp>
 #include <ftxui/screen/color.hpp>
@@ -17,42 +11,11 @@
 #include <string> // for string
 #include <thread>
 #include <filesystem>
-#include <HexObject.hpp>
 #include <cassert>
+#include <format>
+#include <HexObject.hpp>
+#include <DynamicText.h>
 
-class DynamicText : public ftxui::Node {
-public:
-
-    explicit DynamicText(std::string &text) { text_ = &text; }
-    void ComputeRequirement() override {
-        requirement_.min_x = ftxui::string_width(*text_);
-        requirement_.min_y = 1;
-    }
-
-    void Render(ftxui::Screen &screen) override {
-        int x = box_.x_min;
-        const int y = box_.y_min;
-        if (y > box_.y_max) {
-            return;
-        }
-        for (const auto &cell : ftxui::Utf8ToGlyphs(*text_)) {
-            if (x > box_.x_max) {
-                return;
-            }
-            screen.PixelAt(x, y).character = cell;
-            ++x;
-        }
-    }
-
-private:
-
-    std::string *text_;
-
-};
-
-ftxui::Element dynamictext(std::string &text) {
-    return std::make_shared<DynamicText>(text);
-}
 
 HexObject hexObject;
 
@@ -207,18 +170,19 @@ int main(int argc, char* argv[]) {
 
     std::string answer = "";
     Component hex_editor_view = Input(&answer, "0x00");
-    
+    Component hex_editor_command_view = Input(&answer, "");
 
-    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(hexObject.get_ptr_at_index(0)));    
-    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(hexObject.get_ptr_at_index(0)));    
+
+    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(hexObject.get_ptr_at_index(0)));
+    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(hexObject.get_ptr_at_index(0)));
 
     std::vector<Element> data_interpreter_view;
     for (auto& str : byte_interpreter_strings) {
@@ -227,11 +191,17 @@ int main(int argc, char* argv[]) {
 
     // Create Modal Layers
     auto hex_editor_renderer = Renderer([&] {
-    return window(
-        text("Hex Editor") | hcenter,
-        hex_editor_view->Render() | hcenter) | size(WIDTH, EQUAL, 14) | size(HEIGHT, EQUAL, 3) | clear_under;
+        return window(
+            text("Hex Editor") | hcenter,
+            hex_editor_view->Render() | hcenter) | size(WIDTH, EQUAL, 14) | size(HEIGHT, EQUAL, 3) | clear_under;
     });
 
+    auto hex_editor_command_renderer = Renderer([&] {
+        return window(
+            text("Command Prompt") | hcenter,
+            hex_editor_command_view->Render()) | size(WIDTH, EQUAL, 48) | size(HEIGHT, EQUAL, 3) | clear_under;
+    });
+    
     auto hex_viewer_renderer = Renderer([&] {
         return vbox({
             text(std::to_string(global_position) + ":" + std::to_string(yloc) + " V: " + std::to_string(num_viewable_rows)),
@@ -253,6 +223,8 @@ int main(int argc, char* argv[]) {
 
         if (modalDepth == 1) {
             current_view = dbox({current_view, hex_editor_renderer->Render() | center});
+        } else if (modalDepth == 2) {
+            current_view = dbox({current_view, hex_editor_command_renderer->Render() | center});
         }
 
         return current_view | size(WIDTH, EQUAL, 107);
@@ -263,7 +235,9 @@ int main(int argc, char* argv[]) {
         if (event == Event::Escape) { modalDepth = 0; return true; }
 
         char c = event.character().at(0);
-        
+
+        if (c == ':') { modalDepth = 2; }        
+
         if (modalDepth == 0) {
 
             view.at(cursor_y)->GetChildren().at(cursor_x * 2) |= inverted;
@@ -311,18 +285,19 @@ int main(int argc, char* argv[]) {
             view.at(cursor_y)->GetChildren().at(cursor_x * 2) |= inverted;
             updateByteInterpreter(yloc, xloc);
             
-        } else {
+        } else if (modalDepth == 1) {
 
             c = std::toupper(c);
 
             if (event == Event::Return) {
-                int tmp = std::stoi(answer, nullptr, 16);
+                int tmp = (answer.empty()) ? 0x00 : std::stoi(answer, nullptr, 16);
                 if (tmp > 0xFF) {
                     assert("something went wrong");
                 } else {
                     hexObject.set_byte(yloc*16 + xloc, static_cast<uint8_t>(tmp));
                     update_row(yloc, cursor_y);
                     global_position = tmp;
+                    modalDepth = 0;
                     return true;
                 }
             }
@@ -341,6 +316,8 @@ int main(int argc, char* argv[]) {
                 return hex_editor_view->OnEvent(Event::Character(c));
             }
             
+        } else {
+            return hex_editor_command_view->OnEvent(event);
         }
 
         return true;
