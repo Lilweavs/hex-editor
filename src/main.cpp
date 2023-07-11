@@ -31,7 +31,7 @@ int cursor_y = 0;
 bool selectionMode = false;
 
 std::vector<std::pair<int, int>> selections;
-std::vector<std::vector<std::string>> hex_strings;
+std::vector<std::string> hex_strings;
 std::vector<std::string> ascii_strings;
 std::vector<std::string> row_strings;
 std::array<std::string, 10> byte_interpreter_strings;
@@ -104,7 +104,7 @@ void update_row(int row, int cursor_y) {
     char tmp[17] = {0};
     for (int j = 0; j < 16; j++) {
         char val = hexObject.at(row * 16 + j);
-        hex_strings.at(cursor_y).at(j) = std::format("{:02X}", static_cast<uint8_t>(val));
+        hex_strings.at(cursor_y*16 + j) = std::format("{:02X}", static_cast<uint8_t>(val));
 
         tmp[j] = (val >= ' ' && val < '~') ? val : '.';
     }
@@ -132,16 +132,16 @@ void scrollScreen(int row, int col, int cursor_y) {
 
 void updateByteInterpreter(int row, int col) {
     int idx = row*16 + col;
-    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<const uint8_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<const int8_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<const uint16_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<const int16_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<const uint32_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<const int32_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<const uint64_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<const int64_t*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<const float*>(hexObject.get_ptr_at_index(idx)));    
-    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)));    
+    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<const uint8_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<const int8_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<const uint16_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<const int16_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<const uint32_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<const int32_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<const uint64_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<const int64_t*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<const float*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)));
 }
 
 int main(int argc, char* argv[]) {
@@ -203,33 +203,22 @@ int main(int argc, char* argv[]) {
     bool replaceMode = false;
 
     for (int i = 0; i < num_viewable_rows; i++) {
-        std::vector<std::string> tmpStrings;
         for (int j = 0; j < 16; j++) {
-            tmpStrings.push_back(std::format("{:02X}", static_cast<uint8_t>(hexObject.at(i * 16 + j))));
+            hex_strings.push_back(std::format("{:02X}", static_cast<uint8_t>(hexObject.at(i * 16 + j))));
         }
-        hex_strings.push_back(tmpStrings);
     }
 
     for (int i = 0; i < num_viewable_rows; i++) {
         Elements bytes;
-        std::vector<Element *> ref;
         for (int j = 0; j < 16; j++) {
-
-            if (xloc == j and yloc == i) {
-                bytes.push_back(dynamictext(hex_strings.at(i).at(j)) | inverted);
-            } else {
-                bytes.push_back(dynamictext(hex_strings.at(i).at(j)));
-            }
-
-            if (j == 15) {
-                ref.push_back(&bytes.back());
-            } else {
-                ref.push_back(&bytes.back());
-                bytes.push_back(separatorEmpty());
-            }
+            bytes.push_back(dynamictext(hex_strings.at(i*16 + j)));
+            bytes.push_back(separatorEmpty());
         }
+        bytes.pop_back();
         view.push_back(hbox(bytes));
     }
+
+    view.at(0)->GetChildren().at(0) |= inverted;
 
     std::string answer = "";
     Component hex_editor_view = Input(&answer, "0x00");
