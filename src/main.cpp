@@ -28,6 +28,9 @@ int global_position = 0;
 int cursor_x = 0;
 int cursor_y = 0;
 
+bool selectionMode = false;
+
+std::vector<std::pair<int, int>> selections;
 std::vector<std::vector<std::string>> hex_strings;
 std::vector<std::string> ascii_strings;
 std::vector<std::string> row_strings;
@@ -35,6 +38,66 @@ std::array<std::string, 10> byte_interpreter_strings;
 
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
 
+void update_single_selction(auto& view, int curr_x, int curr_y) {
+    auto [last_x, last_y] = selections.back();
+    selections.pop_back();
+    
+    int dy = curr_y - last_y;
+    int dx = curr_x - last_x;
+
+    view.at(last_y)->GetChildren().at(last_x * 2) |= ftxui::inverted;
+    view.at(curr_y)->GetChildren().at(curr_x * 2) |= ftxui::inverted;
+    selections.push_back({curr_x, curr_y});
+}
+
+void update_multi_selection(auto& view, int curr_x, int curr_y) {
+    auto [last_x, last_y] = selections.back();
+
+    int dy = curr_y - last_y;
+    int dx = curr_x - last_x;
+    
+    if (dy == 0) {
+
+        if (dx > 0) {
+            view.at(curr_y)->GetChildren().at(curr_x * 2) |= ftxui::inverted;
+            selections.push_back({curr_x, curr_y});
+        } else if (dx < 0) {
+            view.at(last_y)->GetChildren().at(last_x * 2) |= ftxui::inverted;
+            selections.pop_back();
+        } else {
+            
+        }
+
+    } else if (dy > 0) {
+      
+        for (size_t i = curr_x+1; i < 16; i++) {
+            view.at(last_y)->GetChildren().at(i * 2) |= ftxui::inverted;
+            selections.push_back({i, last_y});
+        }
+
+        for (size_t i = 0; i < curr_x+1; i++) {
+            view.at(curr_y)->GetChildren().at(i * 2) |= ftxui::inverted;
+            selections.push_back({i, curr_y});
+        }
+        
+    } else {
+
+        for (size_t i = 0; i < 16; i++) {
+            auto [tmpx, tmpy] = selections.back();
+            selections.pop_back();
+            view.at(tmpy)->GetChildren().at(tmpx * 2) |= ftxui::inverted;
+        }
+    }
+}
+
+bool is_selected(int cx, int cy) {
+    bool selected = false;
+    for (const auto& [x, y] : selections) {
+        selected = (x == cx) & (y == cy);
+        if (selected) { return true; }
+    }
+    return false;
+}
 
 void update_row(int row, int cursor_y) {
     
@@ -236,53 +299,63 @@ int main(int argc, char* argv[]) {
 
         char c = event.character().at(0);
 
-        if (c == ':') { modalDepth = 2; }        
+        if (c == ':') { modalDepth = 2; }
 
         if (modalDepth == 0) {
 
-            view.at(cursor_y)->GetChildren().at(cursor_x * 2) |= inverted;
-            switch (c) {
-                case 'l':
-                    if (xloc < 15) {
-                        xloc++;
-                        cursor_x++;
+            if (c == 'r') { modalDepth = 1; return true; }
+            if (c == 'v') {
+                if (selectionMode == true) {
+                    for (const auto [tmpx, tmpy] : selections) {
+                        view.at(tmpy)->GetChildren().at(tmpx * 2) |= ftxui::inverted;
                     }
-                    break;
-                case 'h':
-                    if (xloc > 0) {
-                        xloc--;
-                        cursor_x--;
-                    }
-                    break;
-                case 'j':
-                    if (yloc < max_rows - 1) {
-                        yloc++;
-                        if (cursor_y < num_viewable_rows - 1) {
-                            cursor_y++;
-                        } else {
-                            scrollScreen(yloc, xloc, cursor_y);
-                        }
-                    }
-                    break;
-                case 'k':
-                    if (yloc > 0) {
-                        yloc--;
-                        if (cursor_y > 0) {
-                            cursor_y--;
-                        } else {
-                            scrollScreen(yloc, xloc, cursor_y);
-                        }
-                    }
-                    break;
-                case 'r':
-                    modalDepth = 1;
-                    answer = "";
-                    break;
-                default:
-                    break;
+                    auto curr_selection = selections.back();
+                    selections.clear();
+                    selections.push_back(curr_selection);
+                    view.at(curr_selection.second)->GetChildren().at(curr_selection.first * 2) |= ftxui::inverted;
+                }
+                selectionMode ^= true;
+                return true;
             }
 
-            view.at(cursor_y)->GetChildren().at(cursor_x * 2) |= inverted;
+            if (c == 'l') {
+                if (xloc < 15) {
+                    xloc++;
+                    cursor_x++;
+                }
+            } else if (c == 'h') {
+                if (xloc > 0) {
+                    xloc--;
+                    cursor_x--;
+                }
+            } else if (c == 'j') {
+                if (yloc < max_rows - 1) {
+                    yloc++;
+                    if (cursor_y < num_viewable_rows - 1) {
+                        cursor_y++;
+                    } else {
+                        scrollScreen(yloc, xloc, cursor_y);
+                    }
+                }
+            } else if (c == 'k') {
+                if (yloc > 0) {
+                    yloc--;
+                    if (cursor_y > 0) {
+                        cursor_y--;
+                    } else {
+                        scrollScreen(yloc, xloc, cursor_y);
+                    }
+                }
+            } else {
+                // Do nothing
+            }
+
+            if (selectionMode == true) {
+                update_multi_selection(view, cursor_x, cursor_y);
+            } else {
+                update_single_selction(view, cursor_x, cursor_y);
+            }
+
             updateByteInterpreter(yloc, xloc);
             
         } else if (modalDepth == 1) {
@@ -322,6 +395,8 @@ int main(int argc, char* argv[]) {
 
         return true;
     });
+
+    selections.push_back({cursor_x, cursor_x});
 
     Loop loop(&screen, main_window_renderer);
     while (!loop.HasQuitted()) {
