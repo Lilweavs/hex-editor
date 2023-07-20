@@ -38,7 +38,18 @@ std::array<std::string, 10> byte_interpreter_strings;
 
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
 
-void update_single_selction(auto& view, int curr_x, int curr_y) {
+
+void ResetSelectionMode(std::vector<ftxui::Element>& view) {
+    for (const auto [tmpx, tmpy] : selections) {
+        view.at(tmpy)->GetChildren().at(tmpx * 2) |= ftxui::inverted;
+    }
+    auto curr_selection = selections.back();
+    selections.clear();
+    selections.push_back(curr_selection);
+    view.at(curr_selection.second)->GetChildren().at(curr_selection.first * 2) |= ftxui::inverted;
+}
+
+void update_single_selction(std::vector<ftxui::Element>& view, int curr_x, int curr_y) {
     auto [last_x, last_y] = selections.back();
     selections.pop_back();
     
@@ -50,7 +61,7 @@ void update_single_selction(auto& view, int curr_x, int curr_y) {
     selections.push_back({curr_x, curr_y});
 }
 
-void update_multi_selection(auto& view, int curr_x, int curr_y) {
+void update_multi_selection(std::vector<ftxui::Element>& view, int curr_x, int curr_y) {
     auto [last_x, last_y] = selections.back();
 
     int dy = curr_y - last_y;
@@ -109,6 +120,16 @@ void update_row(int row, int cursor_y) {
         tmp[j] = (val >= ' ' && val < '~') ? val : '.';
     }
     ascii_strings.at(cursor_y) = std::string(tmp);
+}
+
+void UpdateScreen(int row, int cursor_y) {
+    int start = row - cursor_y;
+
+    char tmp[17] = {0};
+    for (int i = start; i < (start + num_viewable_rows); i++) {
+        row_strings.at(i - start) = std::format("{:08X}", i * 16);
+        update_row(i, i - start);
+    }
 }
 
 void scrollScreen(int row, int col, int cursor_y) {
@@ -284,7 +305,17 @@ int main(int argc, char* argv[]) {
 
     main_window_renderer |= CatchEvent([&](Event event) {
 
-        if (event == Event::Escape) { modalDepth = 0; answer.clear(); return true; }
+        if (event == Event::Escape) {
+            modalDepth = 0;
+            answer.clear();
+
+            if (selectionMode == true) {
+                ResetSelectionMode(view);
+                selectionMode = false;
+            }
+            
+            return true;
+        }
 
         char c = event.character().at(0);
 
@@ -295,13 +326,7 @@ int main(int argc, char* argv[]) {
             if (c == 'r') { modalDepth = 1; return true; }
             if (c == 'v') {
                 if (selectionMode == true) {
-                    for (const auto [tmpx, tmpy] : selections) {
-                        view.at(tmpy)->GetChildren().at(tmpx * 2) |= ftxui::inverted;
-                    }
-                    auto curr_selection = selections.back();
-                    selections.clear();
-                    selections.push_back(curr_selection);
-                    view.at(curr_selection.second)->GetChildren().at(curr_selection.first * 2) |= ftxui::inverted;
+                    ResetSelectionMode(view);
                 }
                 selectionMode ^= true;
                 return true;
@@ -353,13 +378,21 @@ int main(int argc, char* argv[]) {
 
             if (event == Event::Return) {
                 int tmp = (answer.empty()) ? 0x00 : std::stoi(answer, nullptr, 16);
-                if (tmp > 0xFF) {
-                    assert("something went wrong");
+                if (tmp > 0xFF) { assert("something went wrong"); }
+
+
+                if (selectionMode) {
+                    for (const auto& [x, y] : selections) {
+                        hexObject.set_byte(y*16 + x, static_cast<uint8_t>(tmp));
+                    }
+                    UpdateScreen(yloc, cursor_y);
+                                                    
                 } else {
                     hexObject.set_byte(yloc*16 + xloc, static_cast<uint8_t>(tmp));
                     update_row(yloc, cursor_y);
                     global_position = tmp;
-                }
+                }                
+
                 modalDepth = 0;
                 answer.clear();
                 return true;
