@@ -284,7 +284,7 @@ int main(int argc, char* argv[]) {
 
     main_window_renderer |= CatchEvent([&](Event event) {
 
-        if (event == Event::Escape) { modalDepth = 0; return true; }
+        if (event == Event::Escape) { modalDepth = 0; answer.clear(); return true; }
 
         char c = event.character().at(0);
 
@@ -359,9 +359,10 @@ int main(int argc, char* argv[]) {
                     hexObject.set_byte(yloc*16 + xloc, static_cast<uint8_t>(tmp));
                     update_row(yloc, cursor_y);
                     global_position = tmp;
-                    modalDepth = 0;
-                    return true;
                 }
+                modalDepth = 0;
+                answer.clear();
+                return true;
             }
             
             if (Event::Backspace == event || Event::ArrowLeft == event || Event::ArrowRight == event) {
@@ -379,6 +380,21 @@ int main(int argc, char* argv[]) {
             }
             
         } else {
+            
+            if (event == Event::Return) {
+                
+                if (answer == ":w") {
+                    hexObject.save_file();
+                } else if (answer == ":q") {
+                    screen.Exit();
+                } else {
+                    assert("command not implemented");
+                }
+                answer.clear();
+                modalDepth = 0;
+                return true;;                
+            }
+
             return hex_editor_command_view->OnEvent(event);
         }
 
@@ -393,6 +409,8 @@ int main(int argc, char* argv[]) {
         loop.RunOnce();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+
+    return 0;
 }
 
 // Copyright 2020 Arthur Sonzogni. All rights reserved.
