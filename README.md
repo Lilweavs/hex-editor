@@ -11,9 +11,10 @@ View and edit binary files via a TUI
 | h | move cursor left (ie. jump back 1 byte) |
 | v | toggle selection mode |
 | r | edit byte(s) in selection |
-| TBD | yank selection |
-| TBD | yank selection to clipboard |
-| TBD | paste |
+| y | yank selection |
+| Y | yank selection to system clipboard |
+| p | paste |
+| P | paste from system clipboard |
 | ESC | exit mode |
 
 ## Command Mode
