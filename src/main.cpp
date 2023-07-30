@@ -15,6 +15,8 @@
 #include <format>
 #include <HexObject.hpp>
 #include <DynamicText.h>
+#include <ClipBoard.h>
+#include <ftxui/util/ref.hpp>
 
 
 HexObject hexObject;
@@ -321,8 +323,16 @@ int main(int argc, char* argv[]) {
 
         if (c == ':') { modalDepth = 2; }
 
-        if (modalDepth == 0) {
+        if (c == 'Y') {
+            std::string tmp;
+            for (const auto& [x, y] : selections) {
+                tmp += std::format("{:02X} ", static_cast<uint8_t>(hexObject.at(y*16 + x)));
+            }
+            AddToClipBoard(tmp);
+        }
 
+        if (modalDepth == 0) {
+            
             if (c == 'r') { modalDepth = 1; return true; }
             if (c == 'v') {
                 if (selectionMode == true) {
