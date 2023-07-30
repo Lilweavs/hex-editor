@@ -277,7 +277,7 @@ int main(int argc, char* argv[]) {
     
     auto hex_viewer_renderer = Renderer([&] {
         return vbox({
-            text(std::to_string(global_position) + ":" + std::to_string(yloc) + " V: " + std::to_string(num_viewable_rows)),
+            text(std::format("{} {}:{}", selections.size(), yloc, xloc)),
             separator(),
             hbox({
                 vbox(rowByteIndex) | size(WIDTH, EQUAL, 8),
