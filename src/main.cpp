@@ -7,16 +7,16 @@
 #include <ftxui/screen/color.hpp>
 #include <ftxui/screen/screen.hpp>
 #include <ftxui/screen/terminal.hpp>
+#include <ftxui/util/ref.hpp>
 #include <memory> // for allocator, __shared_ptr_access, shared_ptr
 #include <string> // for string
 #include <thread>
 #include <filesystem>
 #include <cassert>
 #include <format>
-#include <HexObject.hpp>
-#include <DynamicText.h>
-#include <ClipBoard.h>
-#include <ftxui/util/ref.hpp>
+#include "HexObject.hpp"
+#include "DynamicText.h"
+#include "Utils.hpp"
 
 
 HexObject hexObject;
@@ -37,6 +37,8 @@ std::vector<std::string> hex_strings;
 std::vector<std::string> ascii_strings;
 std::vector<std::string> row_strings;
 std::array<std::string, 10> byte_interpreter_strings;
+std::vector<std::pair<int,int>> matches;
+
 
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
 
@@ -68,7 +70,7 @@ void update_multi_selection(std::vector<ftxui::Element>& view, int curr_x, int c
 
     int dy = curr_y - last_y;
     int dx = curr_x - last_x;
-    
+
     if (dy == 0) {
 
         if (dx > 0) {
@@ -118,7 +120,7 @@ void update_row(int row, int cursor_y) {
     for (int j = 0; j < 16; j++) {
         char val = hexObject.at(row * 16 + j);
         hex_strings.at(cursor_y*16 + j) = std::format("{:02X}", static_cast<uint8_t>(val));
-
+        
         tmp[j] = (val >= ' ' && val < '~') ? val : '.';
     }
     ascii_strings.at(cursor_y) = std::string(tmp);
@@ -132,6 +134,35 @@ void UpdateScreen(int row, int cursor_y) {
         row_strings.at(i - start) = std::format("{:08X}", i * 16);
         update_row(i, i - start);
     }
+}
+
+void UpdatePatternSearch(std::vector<ftxui::Element>& view, HexObject& hexObject, int row, int cursor_y) {
+    int start = row - cursor_y;
+
+    for (const auto [x, y] : matches) {
+        view.at(y)->GetChildren().at(x*2) |= color(ftxui::Color::Palette1::Default);
+    }
+
+    matches.clear();
+
+    for (int i = start*16; i < (start + num_viewable_rows)*16; i++) {
+
+        if (int patternLength = hexObject._patternIndex[i]; hexObject._patternIndex.contains(i)) {
+            
+            for (int j = i; j < (i + patternLength); j++) {
+        
+                int tmpy = (j - (start)*16) / 16;
+                int tmpx = (j - (start)*16) % 16;
+
+
+                view.at(tmpy)->GetChildren().at(tmpx*2) |= ftxui::color(ftxui::Color::Palette16::Cyan);
+                matches.push_back({tmpx, tmpy});
+            }
+    
+        }
+                
+    }
+    
 }
 
 void scrollScreen(int row, int col, int cursor_y) {
@@ -171,21 +202,25 @@ int main(int argc, char* argv[]) {
 
     std::filesystem::path file_path;
     
-    if (argc <= 1) {
-        std::cout << "Error: no input file provided\n>>> HexEditor.exe [filePath]" << std::endl;
-        return -1;
-    } 
+    // if (argc <= 1) {
+    //     std::cout << "Error: no input file provided\n>>> HexEditor.exe [filePath]" << std::endl;
+    //     return -1;
+    // } 
 
-    file_path = std::filesystem::absolute(std::string(argv[1]));
-    if (!std::filesystem::exists(file_path)) {
-        std::cout << "File does not exist: " << file_path << std::endl;
-        return -1;
-    }
+    // file_path = std::filesystem::absolute(std::string(argv[1]));
+    // if (!std::filesystem::exists(file_path)) {
+    //     std::cout << "File does not exist: " << file_path << std::endl;
+    //     return -1;
+    // }
+
+    file_path = std::filesystem::absolute("C:\\Users\\Andrew Weaver\\Desktop\\400Hz_raw\\400Hz_raw.bin");
 
     hexObject.set_filepath(file_path);
     size_t bytesRead = hexObject.get_binary_data_from_file();
     max_rows = bytesRead / 16;
-    
+
+    hexObject.find_in_file();
+
     using namespace ftxui;
 
     // TODO: Move to non-vector type to gaurantee no reallocations
@@ -243,11 +278,12 @@ int main(int argc, char* argv[]) {
 
     view.at(0)->GetChildren().at(0) |= inverted;
 
+    UpdatePatternSearch(view, hexObject, 0, 0);
+    
     std::string answer = "";
     Component hex_editor_view = Input(&answer, "0x00");
     Component hex_editor_command_view = Input(&answer, "");
-
-
+    
     byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(hexObject.get_ptr_at_index(0)));
     byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(hexObject.get_ptr_at_index(0)));
     byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(hexObject.get_ptr_at_index(0)));
@@ -359,6 +395,7 @@ int main(int argc, char* argv[]) {
                         cursor_y++;
                     } else {
                         scrollScreen(yloc, xloc, cursor_y);
+                        UpdatePatternSearch(view, hexObject, yloc, cursor_y);
                     }
                 }
             } else if (c == 'k') {
@@ -368,6 +405,7 @@ int main(int argc, char* argv[]) {
                         cursor_y--;
                     } else {
                         scrollScreen(yloc, xloc, cursor_y);
+                        UpdatePatternSearch(view, hexObject, yloc, cursor_y);
                     }
                 }
             } else {

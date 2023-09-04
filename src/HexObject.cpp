@@ -1,9 +1,8 @@
-#include <HexObject.hpp>
-#include <filesystem>
+#include "HexObject.hpp"
 #include <fstream>
 #include <istream>
-#include <type_traits>
-
+#include <algorithm>
+#include <iterator>
 
 HexObject::HexObject(std::filesystem::path filePath) {
     _filePath = filePath;
@@ -43,3 +42,29 @@ char& HexObject::at(int idx) {
 void HexObject::set_byte(int idx, uint8_t byte) {
     _data[idx] = byte;   
 } 
+
+char* HexObject::begin() {
+    return _data;
+}
+
+char* HexObject::end() {
+    return _data + fileSizeInBytes;
+}
+
+void HexObject::find_in_file() {
+
+    std::vector<char> pattern = {static_cast<char>(0xFA), 0x05};
+
+    char* it = std::search(this->begin(), this->end(), pattern.begin(), pattern.end());
+    
+    int offset = 0;
+
+    while (it != this->end()) {
+        offset = std::distance(this->begin(), it);
+        // _patternIndex.push_back(offset);
+        _patternIndex.insert({offset, pattern.size()});
+        offset += pattern.size();
+        it = std::search(this->begin() + offset, this->end(), pattern.begin(), pattern.end());
+    }    
+    
+}

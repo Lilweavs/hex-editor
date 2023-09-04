@@ -1,6 +1,9 @@
 #include <cstdint>
 #include <fstream>
 #include <filesystem>
+#include <memory>
+#include <vector>
+#include <unordered_map>
 
 #ifndef HEXOBJECT_H
 #define HEXOBJECT_H
@@ -10,6 +13,7 @@ class HexObject {
 public:
 
     HexObject() { };
+    
     HexObject(std::filesystem::path filePath);
 
     ~HexObject();
@@ -25,11 +29,21 @@ public:
     char* get_ptr_at_index(int idx);
     
     char& at(int idx);
+
+    char* begin();
+
+    char* end();
+
+    void find_in_file();
+    
+    std::unordered_map<int, int> _patternIndex;
     
 private:
+    
     std::filesystem::path _filePath;
     size_t fileSizeInBytes;
     char* _data;
+    
 };
 
 
