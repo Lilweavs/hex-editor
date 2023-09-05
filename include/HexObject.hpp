@@ -26,13 +26,13 @@ public:
 
     void set_byte(int idx, uint8_t byte); 
     
-    char* get_ptr_at_index(int idx);
+    std::byte* get_ptr_at_index(int idx);
     
-    char& at(int idx);
+    std::byte& at(int idx);
 
-    char* begin();
+    std::byte* begin();
 
-    char* end();
+    std::byte* end();
 
     void find_in_file();
     
@@ -42,7 +42,7 @@ private:
     
     std::filesystem::path _filePath;
     size_t fileSizeInBytes;
-    char* _data;
+    std::byte* _data;
     
 };
 
