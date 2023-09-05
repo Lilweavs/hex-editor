@@ -30,89 +30,18 @@ int cursor_x = 0;
 int cursor_y = 0;
 
 bool selectionMode = false;
-
-std::vector<std::pair<int, int>> selections;
-
-int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
-
-void ResetSelectionMode(std::vector<ftxui::Element>& view) {
-    for (const auto [tmpx, tmpy] : selections) {
-        view.at(tmpy)->GetChildren().at(tmpx * 2) |= ftxui::inverted;
-    }
-    auto curr_selection = selections.back();
-    selections.clear();
-    selections.push_back(curr_selection);
-    view.at(curr_selection.second)->GetChildren().at(curr_selection.first * 2) |= ftxui::inverted;
-}
-
-void update_single_selction(std::vector<ftxui::Element>& view, int curr_x, int curr_y) {
-    auto [last_x, last_y] = selections.back();
-    selections.pop_back();
-    
-    int dy = curr_y - last_y;
-    int dx = curr_x - last_x;
-
-    view.at(last_y)->GetChildren().at(last_x * 2) |= ftxui::inverted;
-    view.at(curr_y)->GetChildren().at(curr_x * 2) |= ftxui::inverted;
-    selections.push_back({curr_x, curr_y});
-}
-
-void update_multi_selection(std::vector<ftxui::Element>& view, int curr_x, int curr_y) {
-    auto [last_x, last_y] = selections.back();
-
-    int dy = curr_y - last_y;
-    int dx = curr_x - last_x;
-    
-    if (dy == 0) {
-
-        if (dx > 0) {
-            view.at(curr_y)->GetChildren().at(curr_x * 2) |= ftxui::inverted;
-            selections.push_back({curr_x, curr_y});
-        } else if (dx < 0) {
-            view.at(last_y)->GetChildren().at(last_x * 2) |= ftxui::inverted;
-            selections.pop_back();
-        } else {
-            
-        }
-
-    } else if (dy > 0) {
-      
-        for (size_t i = curr_x+1; i < 16; i++) {
-            view.at(last_y)->GetChildren().at(i * 2) |= ftxui::inverted;
-            selections.push_back({i, last_y});
-        }
-
-        for (size_t i = 0; i < curr_x+1; i++) {
-            view.at(curr_y)->GetChildren().at(i * 2) |= ftxui::inverted;
-            selections.push_back({i, curr_y});
-        }
-        
-    } else {
-
-        for (size_t i = 0; i < 16; i++) {
-            auto [tmpx, tmpy] = selections.back();
-            selections.pop_back();
-            view.at(tmpy)->GetChildren().at(tmpx * 2) |= ftxui::inverted;
-        }
-    }
-}
-
-bool is_selected(int cx, int cy) {
-    bool selected = false;
-    for (const auto& [x, y] : selections) {
-        selected = (x == cx) & (y == cy);
-        if (selected) { return true; }
-    }
-    return false;
-}
+int selection_start = 0;
 
 std::vector<int> matches;
+std::vector<int> selections = {0};
+
+int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
 
 ftxui::Elements UpdateRow(int row, int start, int cursor, ftxui::Elements& ascii_view) {
     ftxui::Elements row_view;
     std::string tmp(16, '0');
 
-    for (int i = 0; i < 16 ; i++) {
+    for (int i = 0; i < 16; i++) {
         int idx = i + start;
 
         std::byte val = hexObject.at(idx);
@@ -123,33 +52,21 @@ ftxui::Elements UpdateRow(int row, int start, int cursor, ftxui::Elements& ascii
             }
         }
 
-
-        if (matches.end() == std::find(matches.begin(), matches.end(), idx)) {
-            if (i + start != cursor) {
-                row_view.push_back(
-                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val)))
-                );
-            } else {
-                row_view.push_back(
-                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val))) | ftxui::inverted
-                );
-            }
-        } else {
-            if (i + start != cursor) {
-                row_view.push_back(
-                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val))) | ftxui::color(ftxui::Color::Palette16::Red)
-                );
-            } else {
-                row_view.push_back(
-                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val))) | ftxui::inverted | ftxui::color(ftxui::Color::Palette16::Red)
-                );
-            }
+        row_view.push_back(
+            ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val)))
+        );
+      
+        if (matches.end() != std::find(matches.begin(), matches.end(), idx)) {
+            row_view.back() |= ftxui::color(ftxui::Color::Palette16::Red);
         }
 
+        if (selections.end() != std::find(selections.begin(), selections.end(), idx)) { row_view.back() |= ftxui::inverted; }
+      
         row_view.push_back(ftxui::separatorEmpty());
 
         tmp[i] = (val >= static_cast<std::byte>(' ') && val < static_cast<std::byte>('~')) ? static_cast<char>(val) : '.';
     }
+
     row_view.pop_back();
     ascii_view.push_back(ftxui::text(tmp));
 
@@ -184,6 +101,7 @@ void UpdateScreen(ftxui::Elements& byte_view, ftxui::Elements& ascii_view, ftxui
 void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int col) {
     int idx = row*16 + col;
     byte_interpreter_view.clear();
+    byte_interpreter_view.push_back(ftxui::text(std::format("char    {}", *reinterpret_cast<const char*>(hexObject.get_ptr_at_index(idx)))));
     byte_interpreter_view.push_back(ftxui::text(std::format("uint8   {}", *reinterpret_cast<const uint8_t*>(hexObject.get_ptr_at_index(idx)))));
     byte_interpreter_view.push_back(ftxui::text(std::format("int8    {}", *reinterpret_cast<const int8_t*>(hexObject.get_ptr_at_index(idx)))));
     byte_interpreter_view.push_back(ftxui::text(std::format("uint16  {}", *reinterpret_cast<const uint16_t*>(hexObject.get_ptr_at_index(idx)))));
@@ -289,8 +207,10 @@ int main(int argc, char* argv[]) {
             answer.clear();
 
             if (selectionMode == true) {
-                ResetSelectionMode(byte_view);
+                selections.clear();
+                selections.push_back(yloc*16 + xloc);
                 selectionMode = false;
+                UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
             }
             
             return true;
@@ -302,8 +222,9 @@ int main(int argc, char* argv[]) {
 
         if (c == 'Y') {
             std::string tmp;
-            for (const auto& [x, y] : selections) {
-                tmp += std::format("{:02X} ", static_cast<uint8_t>(hexObject.at(y*16 + x)));
+            
+            for (const auto idx : selections) {
+                tmp += std::format("{:02X} ", static_cast<uint8_t>(hexObject.at(idx)));
             }
             AddToClipBoard(tmp);
         }
@@ -312,54 +233,87 @@ int main(int argc, char* argv[]) {
             
             if (c == 'r') { modalDepth = 1; return true; }
             if (c == 'v') {
-                if (selectionMode == true) {
-                    ResetSelectionMode(byte_view);
-                }
                 selectionMode ^= true;
-                return true;
+                selections.clear();
+                selections.push_back(yloc*16 + xloc);
+                selection_start = yloc*16 + xloc;
             }
 
             if (c == 'l') {
                 if (xloc < 15) {
                     xloc++;
                     cursor_x++;
+                    if (selectionMode) {
+                        if (selection_start < yloc*16+xloc) {
+                            selections.push_back(yloc*16+xloc);
+                        } else {
+                            selections.pop_back();
+                        }
+                    }
                 }
             } else if (c == 'h') {
                 if (xloc > 0) {
                     xloc--;
                     cursor_x--;
+                    if (selectionMode) {
+                        if (selection_start <= yloc*16+xloc) {
+                            selections.pop_back();
+                        } else {
+                            selections.push_back(yloc*16+xloc);
+                        }
+                    }
                 }
             } else if (c == 'j') {
                 if (yloc < max_rows - 1) {
+
+                    if (selectionMode) {
+
+                        if (selection_start > yloc*16+xloc) {
+                            for (int i = 0; i <= 16; i++) {
+                                selections.pop_back();
+                            }
+                        } else {
+                            for (int i = (yloc*16+xloc+1); i <= (yloc*16+xloc + 16); i++) {
+                                selections.push_back(i);
+                            }
+                        }
+
+                    }                    
+
                     yloc++;
-                    if (cursor_y < num_viewable_rows - 1) {
-                        cursor_y++;
-                    } else {
-                        // UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
-                    }
+
+                    if (cursor_y < num_viewable_rows - 1) { cursor_y++; }
                 }
             } else if (c == 'k') {
                 if (yloc > 0) {
-                    yloc--;
-                    if (cursor_y > 0) {
-                        cursor_y--;
-                    } else {
-                        // UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
+
+                    if (selectionMode) {
+
+                        if (selection_start < yloc*16+xloc) {
+                            for (int i = 0; i < 16; i++) {
+                                selections.pop_back();
+                            }
+                        } else {
+                            for (int i = (yloc - 1)*16+xloc; i <= (yloc*16+xloc); i++) {
+                                selections.push_back(i);
+                            }
+                        }
+
                     }
+
+                    yloc--;
+
+                    if (cursor_y > 0) { cursor_y--; } 
                 }
+
             } else {
                 // Do nothing
             }
+            
+            if (selectionMode == false) { selections.back() = yloc*16 + xloc; }
 
             UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
                 
-            
-            // if (selectionMode == true) {
-            //     update_multi_selection(byte_view, cursor_x, cursor_y);
-            // } else {
-            //     update_single_selction(byte_view, cursor_x, cursor_y);
-            // }
-
             UpdateByteInterpreter(data_interpreter_view, yloc, xloc);
             
         } else if (modalDepth == 1) {
@@ -372,14 +326,11 @@ int main(int argc, char* argv[]) {
 
 
                 if (selectionMode) {
-                    for (const auto& [x, y] : selections) {
-                        hexObject.set_byte(y*16 + x, static_cast<uint8_t>(tmp));
+                    for (const auto idx : selections) {
+                        hexObject.set_byte(idx, static_cast<uint8_t>(tmp));
                     }
-                    // UpdateScreen(yloc, cursor_y);
-                                                    
                 } else {
-                    hexObject.set_byte(yloc*16 + xloc, static_cast<uint8_t>(tmp));
-                    // update_row(yloc, cursor_y);
+                    hexObject.set_byte(selections.back(), static_cast<uint8_t>(tmp));
                     global_position = tmp;
                 }                
 
@@ -415,7 +366,7 @@ int main(int argc, char* argv[]) {
                 }
                 answer.clear();
                 modalDepth = 0;
-                return true;;                
+                return true;                
             }
 
             return hex_editor_command_view->OnEvent(event);
@@ -423,8 +374,6 @@ int main(int argc, char* argv[]) {
 
         return true;
     });
-
-    selections.push_back({cursor_x, cursor_x});
 
     Loop loop(&screen, main_window_renderer);
     while (!loop.HasQuitted()) {
