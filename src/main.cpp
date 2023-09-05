@@ -1,13 +1,12 @@
-#include "ftxui/component/component.hpp" // for Input, Renderer, ResizableSplitLeft
-#include "ftxui/component/loop.hpp"
-#include "ftxui/component/screen_interactive.hpp" // for ScreenInteractive
-#include "ftxui/dom/elements.hpp" // for operator|, separator, text, Element, flex, vbox, border
+#include <ftxui/component/component.hpp> // for Input, Renderer, ResizableSplitLeft
+#include <ftxui/component/loop.hpp>
+#include <ftxui/component/screen_interactive.hpp> // for ScreenInteractive
+#include <ftxui/dom/elements.hpp> // for operator|, separator, text, Element, flex, vbox, border
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/node.hpp>
 #include <ftxui/screen/color.hpp>
 #include <ftxui/screen/screen.hpp>
 #include <ftxui/screen/terminal.hpp>
-#include <ftxui/util/ref.hpp>
 #include <memory> // for allocator, __shared_ptr_access, shared_ptr
 #include <string> // for string
 #include <thread>
@@ -33,15 +32,8 @@ int cursor_y = 0;
 bool selectionMode = false;
 
 std::vector<std::pair<int, int>> selections;
-std::vector<std::string> hex_strings;
-std::vector<std::string> ascii_strings;
-std::vector<std::string> row_strings;
-std::array<std::string, 10> byte_interpreter_strings;
-std::vector<std::pair<int,int>> matches;
-
 
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
-
 
 void ResetSelectionMode(std::vector<ftxui::Element>& view) {
     for (const auto [tmpx, tmpy] : selections) {
@@ -70,7 +62,7 @@ void update_multi_selection(std::vector<ftxui::Element>& view, int curr_x, int c
 
     int dy = curr_y - last_y;
     int dx = curr_x - last_x;
-
+    
     if (dy == 0) {
 
         if (dx > 0) {
@@ -114,145 +106,128 @@ bool is_selected(int cx, int cy) {
     return false;
 }
 
-void update_row(int row, int cursor_y) {
-    
-    char tmp[17] = {0};
-    for (int j = 0; j < 16; j++) {
-        char val = hexObject.at(row * 16 + j);
-        hex_strings.at(cursor_y*16 + j) = std::format("{:02X}", static_cast<uint8_t>(val));
-        
-        tmp[j] = (val >= ' ' && val < '~') ? val : '.';
-    }
-    ascii_strings.at(cursor_y) = std::string(tmp);
-}
+std::vector<int> matches;
 
-void UpdateScreen(int row, int cursor_y) {
-    int start = row - cursor_y;
+ftxui::Elements UpdateRow(int row, int start, int cursor, ftxui::Elements& ascii_view) {
+    ftxui::Elements row_view;
+    std::string tmp(16, '0');
 
-    char tmp[17] = {0};
-    for (int i = start; i < (start + num_viewable_rows); i++) {
-        row_strings.at(i - start) = std::format("{:08X}", i * 16);
-        update_row(i, i - start);
-    }
-}
+    for (int i = 0; i < 16 ; i++) {
+        int idx = i + start;
 
-void UpdatePatternSearch(std::vector<ftxui::Element>& view, HexObject& hexObject, int row, int cursor_y) {
-    int start = row - cursor_y;
+        std::byte val = hexObject.at(idx);
 
-    for (const auto [x, y] : matches) {
-        view.at(y)->GetChildren().at(x*2) |= color(ftxui::Color::Palette1::Default);
-    }
-
-    matches.clear();
-
-    for (int i = start*16; i < (start + num_viewable_rows)*16; i++) {
-
-        if (int patternLength = hexObject._patternIndex[i]; hexObject._patternIndex.contains(i)) {
-            
-            for (int j = i; j < (i + patternLength); j++) {
-        
-                int tmpy = (j - (start)*16) / 16;
-                int tmpx = (j - (start)*16) % 16;
-
-
-                view.at(tmpy)->GetChildren().at(tmpx*2) |= ftxui::color(ftxui::Color::Palette16::Cyan);
-                matches.push_back({tmpx, tmpy});
+        if (hexObject._patternIndex.contains(idx)) {
+            for (int i = (idx + hexObject._patternIndex[idx] - 1); i >= idx ; i--) {
+                matches.push_back(i);
             }
-    
         }
-                
+
+
+        if (matches.end() == std::find(matches.begin(), matches.end(), idx)) {
+            if (i + start != cursor) {
+                row_view.push_back(
+                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val)))
+                );
+            } else {
+                row_view.push_back(
+                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val))) | ftxui::inverted
+                );
+            }
+        } else {
+            if (i + start != cursor) {
+                row_view.push_back(
+                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val))) | ftxui::color(ftxui::Color::Palette16::Red)
+                );
+            } else {
+                row_view.push_back(
+                    ftxui::text(std::format("{:02X}", static_cast<uint8_t>(val))) | ftxui::inverted | ftxui::color(ftxui::Color::Palette16::Red)
+                );
+            }
+        }
+
+        row_view.push_back(ftxui::separatorEmpty());
+
+        tmp[i] = (val >= static_cast<std::byte>(' ') && val < static_cast<std::byte>('~')) ? static_cast<char>(val) : '.';
     }
-    
+    row_view.pop_back();
+    ascii_view.push_back(ftxui::text(tmp));
+
+    return row_view;
 }
 
-void scrollScreen(int row, int col, int cursor_y) {
 
-    int start = 0, end = 0;
+void UpdateScreen(ftxui::Elements& byte_view, ftxui::Elements& ascii_view, ftxui::Elements& address_view, int cursor_position) {
+    byte_view.clear();
+    ascii_view.clear();
+    address_view.clear();
 
+    int start = 0;
+    int row = (cursor_position / 16);
     if (cursor_y == 0) {
         start = row;
-        end = row + num_viewable_rows;
-    } else {
+    } else if (cursor_y == max_rows) {
         start = row - (num_viewable_rows - 1);
-        end = row + 1;
+        start = (start < 0) ? 0 : start;
+    } else {
+        start = row - (cursor_y);
+        start = (start < 0) ? 0 : start;
     }
 
-    char tmp[17] = {0};
-    for (int i = start; i < end; i++) {
-        row_strings.at(i - start) = std::format("{:08X}", i * 16);
-        update_row(i, i - start);
+    for (int i = start; i < (start + num_viewable_rows); i++) {
+        address_view.push_back(ftxui::text(std::format("{:08X}", i * 16)));
+        byte_view.push_back(ftxui::hbox(UpdateRow(i-start, i*16, cursor_position, ascii_view)));
     }
+   
 }
 
-void updateByteInterpreter(int row, int col) {
+void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int col) {
     int idx = row*16 + col;
-    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<const uint8_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<const int8_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<const uint16_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<const int16_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<const uint32_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<const int32_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<const uint64_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<const int64_t*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<const float*>(hexObject.get_ptr_at_index(idx)));
-    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)));
+    byte_interpreter_view.clear();
+    byte_interpreter_view.push_back(ftxui::text(std::format("uint8   {}", *reinterpret_cast<const uint8_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("int8    {}", *reinterpret_cast<const int8_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("uint16  {}", *reinterpret_cast<const uint16_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("int16   {}", *reinterpret_cast<const int16_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("uint32  {}", *reinterpret_cast<const uint32_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("int32   {}", *reinterpret_cast<const int32_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("uint64  {}", *reinterpret_cast<const uint64_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("int64   {}", *reinterpret_cast<const int64_t*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("float   {}", *reinterpret_cast<const float*>(hexObject.get_ptr_at_index(idx)))));
+    byte_interpreter_view.push_back(ftxui::text(std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)))));
 }
 
 int main(int argc, char* argv[]) {
 
     std::filesystem::path file_path;
     
-    // if (argc <= 1) {
-    //     std::cout << "Error: no input file provided\n>>> HexEditor.exe [filePath]" << std::endl;
-    //     return -1;
-    // } 
+    if (argc <= 1) {
+        std::cout << "Error: no input file provided\n>>> HexEditor.exe [filePath]" << std::endl;
+        return -1;
+    } 
 
-    // file_path = std::filesystem::absolute(std::string(argv[1]));
-    // if (!std::filesystem::exists(file_path)) {
-    //     std::cout << "File does not exist: " << file_path << std::endl;
-    //     return -1;
-    // }
-
-    file_path = std::filesystem::absolute("C:\\Users\\Andrew Weaver\\Desktop\\400Hz_raw\\400Hz_raw.bin");
+    file_path = std::filesystem::absolute(std::string(argv[1]));
+    if (!std::filesystem::exists(file_path)) {
+        std::cout << "File does not exist: " << file_path << std::endl;
+        return -1;
+    }
 
     hexObject.set_filepath(file_path);
     size_t bytesRead = hexObject.get_binary_data_from_file();
-    max_rows = bytesRead / 16;
-
     hexObject.find_in_file();
-
+    max_rows = bytesRead / 16;
+    
     using namespace ftxui;
-
-    // TODO: Move to non-vector type to gaurantee no reallocations
-    // This will cause the string pointers in dynamictext to point to bad memory
-    // locations
-    ascii_strings.reserve(100);
-    row_strings.reserve(100);
 
     auto screen = ScreenInteractive::Fullscreen();
     auto screen_dim = Terminal::Size();
     num_viewable_rows = screen_dim.dimy - 4;
 
-    Elements rowByteIndex;
-    for (int i = 0; i < num_viewable_rows; i++) {
-        row_strings.push_back(std::format("{:08X}", i * 16));
-        rowByteIndex.push_back(dynamictext(row_strings.back()) | dim);
-    }
-
-    Elements rowByteAscii;
-    for (int i = 0; i < num_viewable_rows; i++) {
-        char tmp[17] = {0};
-        for (int j = 0; j < 16; j++) {
-            char val = hexObject.at(i * 16 + j);
-
-            tmp[j] = (val >= ' ' && val < '~') ? val : '.';
-        }
-        ascii_strings.push_back(std::string(tmp));
-        rowByteAscii.push_back(dynamictext(ascii_strings.back()));
-    }
+    Elements byte_view;
+    Elements ascii_view;
+    Elements address_view;
+    Elements data_interpreter_view;
 
     int modalDepth = 0;
-    std::vector<Element> view;
 
     int xloc = 0;
     int yloc = 0;
@@ -260,45 +235,11 @@ int main(int argc, char* argv[]) {
     std::string ydimText;
     bool replaceMode = false;
 
-    for (int i = 0; i < num_viewable_rows; i++) {
-        for (int j = 0; j < 16; j++) {
-            hex_strings.push_back(std::format("{:02X}", static_cast<uint8_t>(hexObject.at(i * 16 + j))));
-        }
-    }
+    UpdateScreen(byte_view, ascii_view, address_view, 0);
 
-    for (int i = 0; i < num_viewable_rows; i++) {
-        Elements bytes;
-        for (int j = 0; j < 16; j++) {
-            bytes.push_back(dynamictext(hex_strings.at(i*16 + j)));
-            bytes.push_back(separatorEmpty());
-        }
-        bytes.pop_back();
-        view.push_back(hbox(bytes));
-    }
-
-    view.at(0)->GetChildren().at(0) |= inverted;
-
-    UpdatePatternSearch(view, hexObject, 0, 0);
-    
     std::string answer = "";
     Component hex_editor_view = Input(&answer, "0x00");
     Component hex_editor_command_view = Input(&answer, "");
-    
-    byte_interpreter_strings.at(0) = std::format("uint8   {}", *reinterpret_cast<uint8_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(1) = std::format("int8    {}", *reinterpret_cast<int8_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(2) = std::format("uint16  {}", *reinterpret_cast<uint16_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(3) = std::format("int16   {}", *reinterpret_cast<int16_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(4) = std::format("uint32  {}", *reinterpret_cast<uint32_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(5) = std::format("int32   {}", *reinterpret_cast<int32_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(6) = std::format("uint64  {}", *reinterpret_cast<uint64_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(7) = std::format("int64   {}", *reinterpret_cast<int64_t*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(8) = std::format("float   {}", *reinterpret_cast<float*>(hexObject.get_ptr_at_index(0)));
-    byte_interpreter_strings.at(9) = std::format("double  {}", *reinterpret_cast<double*>(hexObject.get_ptr_at_index(0)));
-
-    std::vector<Element> data_interpreter_view;
-    for (auto& str : byte_interpreter_strings) {
-        data_interpreter_view.push_back(dynamictext(str));
-    }
 
     // Create Modal Layers
     auto hex_editor_renderer = Renderer([&] {
@@ -318,11 +259,11 @@ int main(int argc, char* argv[]) {
             text(std::format("{} {}:{}", selections.size(), yloc, xloc)),
             separator(),
             hbox({
-                vbox(rowByteIndex) | size(WIDTH, EQUAL, 8),
+                vbox(address_view) | size(WIDTH, EQUAL, 8),
                 separator(),
-                vbox(view) | size(WIDTH, EQUAL, 3 * 16 - 1),
+                vbox(byte_view) | size(WIDTH, EQUAL, 3 * 16 - 1),
                 separator(),
-                vbox(rowByteAscii) | size(WIDTH, EQUAL, 16),
+                vbox(ascii_view) | size(WIDTH, EQUAL, 16),
                 separator(),
                 vbox(data_interpreter_view)
             })
@@ -348,7 +289,7 @@ int main(int argc, char* argv[]) {
             answer.clear();
 
             if (selectionMode == true) {
-                ResetSelectionMode(view);
+                ResetSelectionMode(byte_view);
                 selectionMode = false;
             }
             
@@ -367,12 +308,12 @@ int main(int argc, char* argv[]) {
             AddToClipBoard(tmp);
         }
 
-        if (modalDepth == 0) {
+        if (modalDepth == 0 && event.is_character()) {
             
             if (c == 'r') { modalDepth = 1; return true; }
             if (c == 'v') {
                 if (selectionMode == true) {
-                    ResetSelectionMode(view);
+                    ResetSelectionMode(byte_view);
                 }
                 selectionMode ^= true;
                 return true;
@@ -394,8 +335,7 @@ int main(int argc, char* argv[]) {
                     if (cursor_y < num_viewable_rows - 1) {
                         cursor_y++;
                     } else {
-                        scrollScreen(yloc, xloc, cursor_y);
-                        UpdatePatternSearch(view, hexObject, yloc, cursor_y);
+                        // UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
                     }
                 }
             } else if (c == 'k') {
@@ -404,21 +344,23 @@ int main(int argc, char* argv[]) {
                     if (cursor_y > 0) {
                         cursor_y--;
                     } else {
-                        scrollScreen(yloc, xloc, cursor_y);
-                        UpdatePatternSearch(view, hexObject, yloc, cursor_y);
+                        // UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
                     }
                 }
             } else {
                 // Do nothing
             }
 
-            if (selectionMode == true) {
-                update_multi_selection(view, cursor_x, cursor_y);
-            } else {
-                update_single_selction(view, cursor_x, cursor_y);
-            }
+            UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
+                
+            
+            // if (selectionMode == true) {
+            //     update_multi_selection(byte_view, cursor_x, cursor_y);
+            // } else {
+            //     update_single_selction(byte_view, cursor_x, cursor_y);
+            // }
 
-            updateByteInterpreter(yloc, xloc);
+            UpdateByteInterpreter(data_interpreter_view, yloc, xloc);
             
         } else if (modalDepth == 1) {
 
@@ -433,11 +375,11 @@ int main(int argc, char* argv[]) {
                     for (const auto& [x, y] : selections) {
                         hexObject.set_byte(y*16 + x, static_cast<uint8_t>(tmp));
                     }
-                    UpdateScreen(yloc, cursor_y);
+                    // UpdateScreen(yloc, cursor_y);
                                                     
                 } else {
                     hexObject.set_byte(yloc*16 + xloc, static_cast<uint8_t>(tmp));
-                    update_row(yloc, cursor_y);
+                    // update_row(yloc, cursor_y);
                     global_position = tmp;
                 }                
 
