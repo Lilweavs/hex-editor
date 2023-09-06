@@ -243,74 +243,42 @@ int main(int argc, char* argv[]) {
                 if (xloc < 15) {
                     xloc++;
                     cursor_x++;
-                    if (selectionMode) {
-                        if (selection_start < yloc*16+xloc) {
-                            selections.push_back(yloc*16+xloc);
-                        } else {
-                            selections.pop_back();
-                        }
-                    }
                 }
             } else if (c == 'h') {
                 if (xloc > 0) {
                     xloc--;
                     cursor_x--;
-                    if (selectionMode) {
-                        if (selection_start <= yloc*16+xloc) {
-                            selections.pop_back();
-                        } else {
-                            selections.push_back(yloc*16+xloc);
-                        }
-                    }
                 }
             } else if (c == 'j') {
                 if (yloc < max_rows - 1) {
-
-                    if (selectionMode) {
-
-                        if (selection_start > yloc*16+xloc) {
-                            for (int i = 0; i <= 16; i++) {
-                                selections.pop_back();
-                            }
-                        } else {
-                            for (int i = (yloc*16+xloc+1); i <= (yloc*16+xloc + 16); i++) {
-                                selections.push_back(i);
-                            }
-                        }
-
-                    }                    
-
                     yloc++;
-
                     if (cursor_y < num_viewable_rows - 1) { cursor_y++; }
                 }
             } else if (c == 'k') {
                 if (yloc > 0) {
-
-                    if (selectionMode) {
-
-                        if (selection_start < yloc*16+xloc) {
-                            for (int i = 0; i < 16; i++) {
-                                selections.pop_back();
-                            }
-                        } else {
-                            for (int i = (yloc - 1)*16+xloc; i <= (yloc*16+xloc); i++) {
-                                selections.push_back(i);
-                            }
-                        }
-
-                    }
-
                     yloc--;
-
                     if (cursor_y > 0) { cursor_y--; } 
                 }
-
             } else {
                 // Do nothing
             }
             
-            if (selectionMode == false) { selections.back() = yloc*16 + xloc; }
+            if (selectionMode == false) {
+                selections.back() = yloc*16 + xloc;
+            } else {
+                selections.clear();
+                int end = yloc*16+xloc;
+                if (selection_start < end) {
+                    for (int i = selection_start; i <= end; i++) {
+                        selections.push_back(i);
+                    }
+                } else {
+                    for (int i = end; i <= selection_start; i++) {
+                        selections.push_back(i);
+                    }
+                }
+                
+            }
 
             UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
                 
