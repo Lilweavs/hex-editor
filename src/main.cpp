@@ -1,4 +1,5 @@
 #include <ftxui/component/component.hpp> // for Input, Renderer, ResizableSplitLeft
+#include <ftxui/component/component_base.hpp>
 #include <ftxui/component/loop.hpp>
 #include <ftxui/component/screen_interactive.hpp> // for ScreenInteractive
 #include <ftxui/dom/elements.hpp> // for operator|, separator, text, Element, flex, vbox, border
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <cassert>
 #include <format>
+#include <regex>
 #include "HexObject.hpp"
 #include "DynamicText.h"
 #include "Utils.hpp"
@@ -34,6 +36,15 @@ int selection_start = 0;
 
 std::vector<int> matches;
 std::vector<int> selections = {0};
+
+enum class ModalView {
+    HexView,
+    HexEditView,
+    HexCommandView,
+    HexPatternView,
+};
+
+std::regex hex_regex("0[xX][0-9a-fA-F]+");
 
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
 
@@ -114,6 +125,17 @@ void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int 
     byte_interpreter_view.push_back(ftxui::text(std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)))));
 }
 
+bool ErrorInPatternInput(const std::vector<std::string>& patterns) {
+
+    for (const auto& pattern : patterns) {
+        if (!std::regex_search(pattern, hex_regex)) {
+            return true;
+        }               
+    }
+
+    return false;
+}
+
 int main(int argc, char* argv[]) {
 
     std::filesystem::path file_path;
@@ -188,13 +210,43 @@ int main(int argc, char* argv[]) {
         }) | border;
     });
 
+    std::vector<std::vector<std::byte>> patterns = {{std::byte(0xFB), std::byte(0x00)}};
+    std::vector<std::string> input_pattern_strings = {{""}}; 
+    
+    Components pattern_input_components;
+
+    input_pattern_strings.push_back("");
+
+    auto pattern_component = Container::Vertical({});
+
+    auto hex_editor_pattern_renderer = Renderer([&] {
+        return window(
+            text(std::format(" Pattern View ")),
+            vbox(pattern_component->Render())
+        ) | clear_under;
+    });
+
     auto main_window_renderer = Renderer([&] {
         Element current_view = hex_viewer_renderer->Render();
+            
+        // if (modal_view == ModalView::HexEditView) {
+        //     current_view = dbox({current_view, hex_editor_renderer->Render() | center});
+        // } else if (modal_view == ModalView::HexCommandView) {
+        //     current_view = dbox({current_view, hex_editor_command_renderer->Render() | center});
+        // } else if (modal_view == ModalView::HexPatternView) {
+        //     current_view = dbox({current_view, hex_editor_pattern_renderer->Render() | center});
+        // } else {
+        //     // already in HexEditView
+        // }
 
         if (modalDepth == 1) {
             current_view = dbox({current_view, hex_editor_renderer->Render() | center});
         } else if (modalDepth == 2) {
             current_view = dbox({current_view, hex_editor_command_renderer->Render() | center});
+        } else if (modalDepth == 3) {
+            current_view = dbox({current_view, hex_editor_pattern_renderer->Render() | center});
+        } else {
+            // HexView
         }
 
         return current_view | size(WIDTH, EQUAL, 107);
@@ -203,6 +255,14 @@ int main(int argc, char* argv[]) {
     main_window_renderer |= CatchEvent([&](Event event) {
 
         if (event == Event::Escape) {
+
+            if (modalDepth == 3) {
+                if (ErrorInPatternInput(input_pattern_strings)) {
+                    return true;  
+                }                
+            }
+            
+            
             modalDepth = 0;
             answer.clear();
 
@@ -212,6 +272,7 @@ int main(int argc, char* argv[]) {
                 selectionMode = false;
                 UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
             }
+
             
             return true;
         }
@@ -227,6 +288,15 @@ int main(int argc, char* argv[]) {
                 tmp += std::format("{:02X} ", static_cast<uint8_t>(hexObject.at(idx)));
             }
             AddToClipBoard(tmp);
+        }
+
+        if (c == 'f') {
+            if (pattern_component->ChildCount() == 0) {
+                pattern_component->Add(Input(input_pattern_strings[0], "0x00"));
+            }
+            
+            modalDepth = 3;
+            return true;
         }
 
         if (modalDepth == 0 && event.is_character()) {
@@ -281,7 +351,6 @@ int main(int argc, char* argv[]) {
             }
 
             UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
-                
             UpdateByteInterpreter(data_interpreter_view, yloc, xloc);
             
         } else if (modalDepth == 1) {
@@ -320,6 +389,17 @@ int main(int argc, char* argv[]) {
             if (c <= '9' && c >= '0' || c <= 'F' && c >= 'A') {
                 return hex_editor_view->OnEvent(Event::Character(c));
             }
+
+        } else if (modalDepth == 3) {
+
+            if (c == 'n') {
+                pattern_component->Add(Input(input_pattern_strings[0], "0x00"));
+                return true;
+            }
+
+            // CheckPatterns(input_pattern_strings);
+            
+            return pattern_component->OnEvent(event);
             
         } else {
             
