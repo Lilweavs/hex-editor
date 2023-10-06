@@ -1,4 +1,5 @@
 #include "HexObject.hpp"
+#include <cstdint>
 #include <fstream>
 #include <istream>
 #include <algorithm>
@@ -51,20 +52,21 @@ std::byte* HexObject::end() {
     return _data + fileSizeInBytes;
 }
 
-void HexObject::find_in_file() {
-
-    std::vector<std::byte> pattern = {std::byte(0xFB), std::byte(0x00)};
-
+void HexObject::find_pattern(const std::vector<std::byte>& pattern, uint8_t depth) {
     std::byte* it = std::search(begin(), end(), pattern.begin(), pattern.end());
     
-    int offset = 0;
-
     while (it != this->end()) {
-        offset = std::distance(this->begin(), it);
-        // _patternIndex.push_back(offset);
-        _patternIndex.insert({offset, pattern.size()});
+        int offset = std::distance(this->begin(), it);
+        _patternIndex.insert({offset, {pattern.size(), depth}});
         offset += pattern.size();
         it = std::search(begin() + offset, end(), pattern.begin(), pattern.end());
-    }    
-    
+    }
+}
+
+void HexObject::find_in_file(const std::vector<std::vector<std::byte>>& patterns) {
+
+    for (int i = 0; i < patterns.size(); i++) {
+        find_pattern(patterns[i], i+1);
+    }
+ 
 }

@@ -34,9 +34,11 @@ public:
 
     std::byte* end();
 
-    void find_in_file();
+    void find_in_file(const std::vector<std::vector<std::byte>>& patterns);
     
-    std::unordered_map<int, int> _patternIndex;
+    void find_pattern(const std::vector<std::byte>& pattern, uint8_t depth);
+    
+    std::unordered_map<int, std::pair<int,uint8_t>> _patternIndex;
     
 private:
     

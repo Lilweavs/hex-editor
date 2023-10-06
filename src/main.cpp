@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cstdint>
 #include <ftxui/component/component.hpp> // for Input, Renderer, ResizableSplitLeft
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/component/loop.hpp>
@@ -35,6 +37,7 @@ bool selectionMode = false;
 int selection_start = 0;
 
 std::vector<int> matches;
+std::vector<int> match_colors;
 std::vector<int> selections = {0};
 
 enum class ModalView {
@@ -58,8 +61,10 @@ ftxui::Elements UpdateRow(int row, int start, int cursor, ftxui::Elements& ascii
         std::byte val = hexObject.at(idx);
 
         if (hexObject._patternIndex.contains(idx)) {
-            for (int i = (idx + hexObject._patternIndex[idx] - 1); i >= idx ; i--) {
+            const auto [size, color] = hexObject._patternIndex[idx];
+            for (int i = (idx + size - 1); i >= idx ; i--) {
                 matches.push_back(i);
+                match_colors.push_back(color);
             }
         }
 
@@ -68,7 +73,8 @@ ftxui::Elements UpdateRow(int row, int start, int cursor, ftxui::Elements& ascii
         );
       
         if (matches.end() != std::find(matches.begin(), matches.end(), idx)) {
-            row_view.back() |= ftxui::color(ftxui::Color::Palette16::Red);
+            row_view.back() |= ftxui::color(static_cast<ftxui::Color::Palette16>(match_colors.back()));
+            match_colors.pop_back();
         }
 
         if (selections.end() != std::find(selections.begin(), selections.end(), idx)) { row_view.back() |= ftxui::inverted; }
@@ -89,7 +95,9 @@ void UpdateScreen(ftxui::Elements& byte_view, ftxui::Elements& ascii_view, ftxui
     byte_view.clear();
     ascii_view.clear();
     address_view.clear();
-
+    matches.clear();
+    match_colors.clear();
+    
     int start = 0;
     int row = (cursor_position / 16);
     if (cursor_y == 0) {
@@ -125,15 +133,17 @@ void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int 
     byte_interpreter_view.push_back(ftxui::text(std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)))));
 }
 
-bool ErrorInPatternInput(const std::vector<std::string>& patterns) {
+enum class RegexError { NO_REGEX_ERROR, REGEX_ERROR };
+
+RegexError ErrorInPatternInput(const std::vector<std::string>& patterns) {
 
     for (const auto& pattern : patterns) {
-        if (!std::regex_search(pattern, hex_regex)) {
-            return true;
+        if (std::regex_search(pattern, hex_regex) == false) {
+            return RegexError::REGEX_ERROR;
         }               
     }
 
-    return false;
+    return RegexError::NO_REGEX_ERROR;
 }
 
 int main(int argc, char* argv[]) {
@@ -153,7 +163,6 @@ int main(int argc, char* argv[]) {
 
     hexObject.set_filepath(file_path);
     size_t bytesRead = hexObject.get_binary_data_from_file();
-    hexObject.find_in_file();
     max_rows = bytesRead / 16;
     
     using namespace ftxui;
@@ -210,12 +219,12 @@ int main(int argc, char* argv[]) {
         }) | border;
     });
 
-    std::vector<std::vector<std::byte>> patterns = {{std::byte(0xFB), std::byte(0x00)}};
-    std::vector<std::string> input_pattern_strings = {{""}}; 
+    std::vector<std::vector<std::byte>> patterns;
+    std::vector<std::string> input_pattern_strings; 
+
+    input_pattern_strings.reserve(10);
     
     Components pattern_input_components;
-
-    input_pattern_strings.push_back("");
 
     auto pattern_component = Container::Vertical({});
 
@@ -257,11 +266,28 @@ int main(int argc, char* argv[]) {
         if (event == Event::Escape) {
 
             if (modalDepth == 3) {
-                if (ErrorInPatternInput(input_pattern_strings)) {
-                    return true;  
+                if (RegexError::NO_REGEX_ERROR == ErrorInPatternInput(input_pattern_strings)) {
+                    patterns.clear();
+                    // if (!patterns.empty()) { patterns.clear(); }
+
+                    for (const auto& pattern : input_pattern_strings) {
+                        uint64_t pattern_value = stoi(pattern, 0, 16);
+                        int num_bytes = (pattern.size() - 2) / 2;
+
+                        std::vector<std::byte> tmp;
+                        for (auto i = 0; i < num_bytes; i++) {
+                            std::byte byte = static_cast<std::byte>((pattern_value >> i*8) & 0xFF);
+                            tmp.push_back(byte);
+                        }
+                        std::reverse(tmp.begin(), tmp.end());
+                        patterns.push_back(tmp);                        
+                    }
+                                        
+                    hexObject.find_in_file(patterns);
+                } else {
+                    return true;
                 }                
             }
-            
             
             modalDepth = 0;
             answer.clear();
@@ -272,9 +298,9 @@ int main(int argc, char* argv[]) {
                 selectionMode = false;
                 UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
             }
-
             
             return true;
+            
         }
 
         char c = event.character().at(0);
@@ -292,7 +318,8 @@ int main(int argc, char* argv[]) {
 
         if (c == 'f') {
             if (pattern_component->ChildCount() == 0) {
-                pattern_component->Add(Input(input_pattern_strings[0], "0x00"));
+                input_pattern_strings.push_back("");
+                pattern_component->Add(Input(&input_pattern_strings.back(), "0x00"));
             }
             
             modalDepth = 3;
@@ -393,11 +420,10 @@ int main(int argc, char* argv[]) {
         } else if (modalDepth == 3) {
 
             if (c == 'n') {
-                pattern_component->Add(Input(input_pattern_strings[0], "0x00"));
+                input_pattern_strings.push_back("");
+                pattern_component->Add(Input(&input_pattern_strings.back(), "0x00"));
                 return true;
             }
-
-            // CheckPatterns(input_pattern_strings);
             
             return pattern_component->OnEvent(event);
             
