@@ -11,6 +11,7 @@
 #include <ftxui/screen/color.hpp>
 #include <ftxui/screen/screen.hpp>
 #include <ftxui/screen/terminal.hpp>
+#include <ftxui/util/ref.hpp>
 #include <memory> // for allocator, __shared_ptr_access, shared_ptr
 #include <string> // for string
 #include <thread>
@@ -136,10 +137,12 @@ void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int 
 
 enum class RegexError { NO_REGEX_ERROR, REGEX_ERROR };
 
-RegexError ErrorInPatternInput(const std::vector<std::pair<std::string, ftxui::InputOption>>& patterns) {
+// RegexError ErrorInPatternInput(const std::vector<std::pair<std::string, ftxui::InputOption>>& patterns) {
+RegexError ErrorInPatternInput(const std::vector<std::pair<std::string, int>>& input_data) {
 
-    for (const auto& pattern : patterns) {
-        if (std::regex_search(pattern.first, hex_regex) == false) {
+    for (const auto& data : input_data) {
+        if (data.first.empty()) { continue; }
+        if (std::regex_search(data.first, hex_regex) == false) {
             return RegexError::REGEX_ERROR;
         }               
     }
@@ -221,10 +224,9 @@ int main(int argc, char* argv[]) {
     });
 
     std::vector<std::vector<std::byte>> patterns;
+    std::vector<std::pair<std::string, int>> input_data;
     
-    std::vector<std::pair<std::string, ftxui::InputOption>> input_pattern_data;
-
-    input_pattern_data.reserve(10);
+    input_data.reserve(10);
     
     Components pattern_input_components;
 
@@ -268,12 +270,13 @@ int main(int argc, char* argv[]) {
         if (event == Event::Escape) {
 
             if (modalDepth == 3) {
-                if (RegexError::NO_REGEX_ERROR == ErrorInPatternInput(input_pattern_data)) {
+                if (RegexError::NO_REGEX_ERROR == ErrorInPatternInput(input_data)) {
                     patterns.clear();
 
-                    for (const auto& pattern : input_pattern_data) {
-                        uint64_t pattern_value = stoi(pattern.first, 0, 16);
-                        int num_bytes = (pattern.first.size() - 2) / 2;
+                    for (const auto& data : input_data) {
+                        if (data.first == "") { continue; }
+                        uint64_t pattern_value = stoi(data.first, 0, 16);
+                        int num_bytes = (data.first.size() - 2) / 2;
 
                         std::vector<std::byte> tmp;
                         for (auto i = 0; i < num_bytes; i++) {
@@ -319,8 +322,14 @@ int main(int argc, char* argv[]) {
 
         if (c == 'f' && modalDepth != 3) {
             if (pattern_component->ChildCount() == 0) {
-                input_pattern_data.push_back({"", {[]{}, []{}, false, 0}});
-                pattern_component->Add(Input(&input_pattern_data.back().first, "0x00", &input_pattern_data.back().second));
+                InputOption option;
+                input_data.push_back({"", 0});
+                option.placeholder = "0x00";
+                option.multiline = false;
+                option.content = &input_data.back().first;
+                option.cursor_position = &input_data.back().second;
+
+                pattern_component->Add(Input(option));
             }
             
             modalDepth = 3;
@@ -421,24 +430,36 @@ int main(int argc, char* argv[]) {
         } else if (modalDepth == 3) {
 
             if (c == 'n') {
-                input_pattern_data.push_back({"", {[]{}, []{}, false, 0}});
-                pattern_component->Add(Input(&input_pattern_data.back().first, "0x00", &input_pattern_data.back().second));
-                return true;
+                InputOption option;
+                input_data.push_back({"", 0});
+                option.placeholder = "0x00";
+                option.multiline = false;
+                option.content = &input_data.back().first;
+                option.cursor_position = &input_data.back().second;
+                pattern_component->Add(Input(option));
+                c = 0;
+            } else if (c == 'N') {
+                input_data.pop_back();
+                c = 0;
             }
-
-            bool done = pattern_component->OnEvent(event);
 
             pattern_component->DetachAllChildren();
 
-            for (auto& [pattern, options] : input_pattern_data) {
-                if (std::regex_search(pattern, hex_regex)) {
-                    pattern_component->Add(Input(&pattern, "0x00", &options));
+            for (auto& config : input_data) {
+                InputOption input_option;
+                input_option.placeholder = "0x00";
+                input_option.multiline = false;
+                input_option.content = &config.first;
+                input_option.cursor_position = &config.second;
+
+                if (std::regex_search(config.first, hex_regex)) {
+                    pattern_component->Add(Input(input_option));
                 } else {
-                    pattern_component->Add(Input(&pattern, "0x00", &options) | color(ftxui::Color::Palette16::Red));
+                    pattern_component->Add(Input(input_option) | color(ftxui::Color::Palette16::Red));
                 }
             }
-            
-            return done;
+
+            if (c) { return pattern_component->OnEvent(event); }
                                   
         } else {
             

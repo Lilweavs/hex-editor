@@ -64,7 +64,7 @@ void HexObject::find_pattern(const std::vector<std::byte>& pattern, uint8_t dept
 }
 
 void HexObject::find_in_file(const std::vector<std::vector<std::byte>>& patterns) {
-
+    _patternIndex.clear();
     for (int i = 0; i < patterns.size(); i++) {
         find_pattern(patterns[i], i+1);
     }
