@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <ftxui/component/component.hpp> // for Input, Renderer, ResizableSplitLeft
 #include <ftxui/component/component_base.hpp>
+#include <ftxui/component/component_options.hpp>
 #include <ftxui/component/loop.hpp>
 #include <ftxui/component/screen_interactive.hpp> // for ScreenInteractive
 #include <ftxui/dom/elements.hpp> // for operator|, separator, text, Element, flex, vbox, border
@@ -135,10 +136,10 @@ void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int 
 
 enum class RegexError { NO_REGEX_ERROR, REGEX_ERROR };
 
-RegexError ErrorInPatternInput(const std::vector<std::string>& patterns) {
+RegexError ErrorInPatternInput(const std::vector<std::pair<std::string, ftxui::InputOption>>& patterns) {
 
     for (const auto& pattern : patterns) {
-        if (std::regex_search(pattern, hex_regex) == false) {
+        if (std::regex_search(pattern.first, hex_regex) == false) {
             return RegexError::REGEX_ERROR;
         }               
     }
@@ -220,9 +221,10 @@ int main(int argc, char* argv[]) {
     });
 
     std::vector<std::vector<std::byte>> patterns;
-    std::vector<std::string> input_pattern_strings; 
+    
+    std::vector<std::pair<std::string, ftxui::InputOption>> input_pattern_data;
 
-    input_pattern_strings.reserve(10);
+    input_pattern_data.reserve(10);
     
     Components pattern_input_components;
 
@@ -266,13 +268,12 @@ int main(int argc, char* argv[]) {
         if (event == Event::Escape) {
 
             if (modalDepth == 3) {
-                if (RegexError::NO_REGEX_ERROR == ErrorInPatternInput(input_pattern_strings)) {
+                if (RegexError::NO_REGEX_ERROR == ErrorInPatternInput(input_pattern_data)) {
                     patterns.clear();
-                    // if (!patterns.empty()) { patterns.clear(); }
 
-                    for (const auto& pattern : input_pattern_strings) {
-                        uint64_t pattern_value = stoi(pattern, 0, 16);
-                        int num_bytes = (pattern.size() - 2) / 2;
+                    for (const auto& pattern : input_pattern_data) {
+                        uint64_t pattern_value = stoi(pattern.first, 0, 16);
+                        int num_bytes = (pattern.first.size() - 2) / 2;
 
                         std::vector<std::byte> tmp;
                         for (auto i = 0; i < num_bytes; i++) {
@@ -316,10 +317,10 @@ int main(int argc, char* argv[]) {
             AddToClipBoard(tmp);
         }
 
-        if (c == 'f') {
+        if (c == 'f' && modalDepth != 3) {
             if (pattern_component->ChildCount() == 0) {
-                input_pattern_strings.push_back("");
-                pattern_component->Add(Input(&input_pattern_strings.back(), "0x00"));
+                input_pattern_data.push_back({"", {[]{}, []{}, false, 0}});
+                pattern_component->Add(Input(&input_pattern_data.back().first, "0x00", &input_pattern_data.back().second));
             }
             
             modalDepth = 3;
@@ -420,13 +421,25 @@ int main(int argc, char* argv[]) {
         } else if (modalDepth == 3) {
 
             if (c == 'n') {
-                input_pattern_strings.push_back("");
-                pattern_component->Add(Input(&input_pattern_strings.back(), "0x00"));
+                input_pattern_data.push_back({"", {[]{}, []{}, false, 0}});
+                pattern_component->Add(Input(&input_pattern_data.back().first, "0x00", &input_pattern_data.back().second));
                 return true;
             }
+
+            bool done = pattern_component->OnEvent(event);
+
+            pattern_component->DetachAllChildren();
+
+            for (auto& [pattern, options] : input_pattern_data) {
+                if (std::regex_search(pattern, hex_regex)) {
+                    pattern_component->Add(Input(&pattern, "0x00", &options));
+                } else {
+                    pattern_component->Add(Input(&pattern, "0x00", &options) | color(ftxui::Color::Palette16::Red));
+                }
+            }
             
-            return pattern_component->OnEvent(event);
-            
+            return done;
+                                  
         } else {
             
             if (event == Event::Return) {
