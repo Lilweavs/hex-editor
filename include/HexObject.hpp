@@ -34,6 +34,8 @@ public:
 
     std::byte* end();
 
+    size_t size();
+
     void find_in_file(const std::vector<std::vector<std::byte>>& patterns);
     
     void find_pattern(const std::vector<std::byte>& pattern, uint8_t depth);
@@ -42,9 +44,9 @@ public:
     
 private:
     
-    std::filesystem::path _filePath;
-    size_t fileSizeInBytes;
-    std::byte* _data;
+    std::filesystem::path filePath;
+    size_t fileSize;
+    std::byte* data;
     
 };
 

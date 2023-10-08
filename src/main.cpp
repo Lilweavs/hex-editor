@@ -57,7 +57,10 @@ ftxui::Elements UpdateRow(int row, int start, int cursor, ftxui::Elements& ascii
     ftxui::Elements row_view;
     std::string tmp(16, '0');
 
-    for (int i = 0; i < 16; i++) {
+    int row_size = std::distance(hexObject.get_ptr_at_index(start), hexObject.end());
+    int end = (row_size > 16) ? 16 : row_size;
+
+    for (int i = 0; i < end; i++) {
         int idx = i + start;
 
         std::byte val = hexObject.at(idx);
@@ -112,7 +115,9 @@ void UpdateScreen(ftxui::Elements& byte_view, ftxui::Elements& ascii_view, ftxui
         start = (start < 0) ? 0 : start;
     }
 
-    for (int i = start; i < (start + num_viewable_rows); i++) {
+    int end = (start + num_viewable_rows > max_rows) ? max_rows+1 : start + num_viewable_rows; 
+
+    for (int i = start; i < end; i++) {
         address_view.push_back(ftxui::text(std::format("{:08X}", i * 16)));
         byte_view.push_back(ftxui::hbox(UpdateRow(i-start, i*16, cursor_position, ascii_view)));
     }
@@ -137,7 +142,6 @@ void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int 
 
 enum class RegexError { NO_REGEX_ERROR, REGEX_ERROR };
 
-// RegexError ErrorInPatternInput(const std::vector<std::pair<std::string, ftxui::InputOption>>& patterns) {
 RegexError ErrorInPatternInput(const std::vector<std::pair<std::string, int>>& input_data) {
 
     for (const auto& data : input_data) {
@@ -225,7 +229,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<std::vector<std::byte>> patterns;
     std::vector<std::pair<std::string, int>> input_data;
-    
+
     input_data.reserve(10);
     
     Components pattern_input_components;
@@ -284,7 +288,7 @@ int main(int argc, char* argv[]) {
                             tmp.push_back(byte);
                         }
                         std::reverse(tmp.begin(), tmp.end());
-                        patterns.push_back(tmp);                        
+                        patterns.push_back(tmp);
                     }
                                         
                     hexObject.find_in_file(patterns);
@@ -328,7 +332,7 @@ int main(int argc, char* argv[]) {
                 option.multiline = false;
                 option.content = &input_data.back().first;
                 option.cursor_position = &input_data.back().second;
-
+    
                 pattern_component->Add(Input(option));
             }
             
@@ -451,7 +455,7 @@ int main(int argc, char* argv[]) {
                 input_option.multiline = false;
                 input_option.content = &config.first;
                 input_option.cursor_position = &config.second;
-
+                
                 if (std::regex_search(config.first, hex_regex)) {
                     pattern_component->Add(Input(input_option));
                 } else {

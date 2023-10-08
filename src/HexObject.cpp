@@ -6,50 +6,54 @@
 #include <iterator>
 
 HexObject::HexObject(std::filesystem::path filePath) {
-    _filePath = filePath;
+    this->filePath = filePath;
     get_binary_data_from_file();
 }
 
 HexObject::~HexObject() {
-    delete[] _data;
+    delete[] data;
 }
 
 void HexObject::set_filepath(std::filesystem::path filePath) {
-    _filePath = filePath;
+    this->filePath = filePath;
 }
 
 size_t HexObject::get_binary_data_from_file() {
-    fileSizeInBytes = std::filesystem::file_size(_filePath);
-    _data = new std::byte[fileSizeInBytes]();
-    std::ifstream file(_filePath, std::ios::binary);
-    file.read(reinterpret_cast<char*>(_data), fileSizeInBytes);
+    fileSize = std::filesystem::file_size(filePath);
+    data = new std::byte[fileSize]();
+    std::ifstream file(filePath, std::ios::binary);
+    file.read(reinterpret_cast<char*>(data), fileSize);
 
     return file.gcount();
 }
 
 void HexObject::save_file() {
-    std::ofstream file(_filePath, std::ios::binary);
-    file.write(reinterpret_cast<char*>(_data), fileSizeInBytes); 
+    std::ofstream file(filePath, std::ios::binary);
+    file.write(reinterpret_cast<char*>(data), fileSize); 
 }
 
 std::byte* HexObject::get_ptr_at_index(int idx) {
-    return &_data[idx];
+    return &data[idx];
 }
 
 std::byte& HexObject::at(int idx) {
-    return _data[idx];    
+    return data[idx];    
 }
 
 void HexObject::set_byte(int idx, uint8_t byte) {
-    _data[idx] = static_cast<std::byte>(byte);   
+    data[idx] = static_cast<std::byte>(byte);   
 } 
 
 std::byte* HexObject::begin() {
-    return _data;
+    return data;
 }
 
 std::byte* HexObject::end() {
-    return _data + fileSizeInBytes;
+    return data + fileSize;
+}
+
+size_t HexObject::size() {
+    return fileSize;
 }
 
 void HexObject::find_pattern(const std::vector<std::byte>& pattern, uint8_t depth) {
