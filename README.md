@@ -1,5 +1,5 @@
 # hex-editor
-View and edit binary files via a TUI. Built with C++ and FTXUI.
+View and edit binary files via a TUI. Built with C++ and [FTXUI](https://github.com/ArthurSonzogni/FTXUI).
 
 ![hex_editor_main_view](https://github.com/Lilweavs/hex-editor/assets/35853304/8c8eac67-8155-40fc-bd40-8311c3507898)
 
