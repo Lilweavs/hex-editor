@@ -22,7 +22,7 @@
 #include "HexObject.hpp"
 #include "DynamicText.h"
 #include "Utils.hpp"
-#include "Controller.hpp"
+#include "InputHandler.hpp"
 
 HexObject hexObject;
 
@@ -42,11 +42,11 @@ std::vector<int> matches;
 std::vector<int> match_colors;
 std::vector<int> selections = {0};
 
-enum class ModalView {
-    HexView,
-    HexEditView,
-    HexCommandView,
-    HexPatternView,
+enum class HexEditorModes {
+    VIEW_MODE,
+    EDIT_MODE,
+    PATTERN_MODE,
+    COMMAND_MODE,
 };
 
 std::regex hex_regex("0[xX][0-9a-fA-F]+");
@@ -191,6 +191,7 @@ int main(int argc, char* argv[]) {
 
     std::string ydimText;
     bool replaceMode = false;
+    HexEditorModes hexEditorMode = HexEditorModes::VIEW_MODE;
 
     UpdateScreen(byte_view, ascii_view, address_view, 0);
 
@@ -265,21 +266,11 @@ int main(int argc, char* argv[]) {
     auto main_window_renderer = Renderer([&] {
         Element current_view = hex_viewer_renderer->Render();
             
-        // if (modal_view == ModalView::HexEditView) {
-        //     current_view = dbox({current_view, hex_editor_renderer->Render() | center});
-        // } else if (modal_view == ModalView::HexCommandView) {
-        //     current_view = dbox({current_view, hex_editor_command_renderer->Render() | center});
-        // } else if (modal_view == ModalView::HexPatternView) {
-        //     current_view = dbox({current_view, hex_editor_pattern_renderer->Render() | center});
-        // } else {
-        //     // already in HexEditView
-        // }
-
-        if (modalDepth == 1) {
+        if (hexEditorMode == HexEditorModes::EDIT_MODE) {
             current_view = dbox({current_view, hex_editor_renderer->Render() | center});
-        } else if (modalDepth == 2) {
+        } else if (hexEditorMode == HexEditorModes::COMMAND_MODE) {
             current_view = dbox({current_view, hex_editor_command_renderer->Render() | center});
-        } else if (modalDepth == 3) {
+        } else if (hexEditorMode == HexEditorModes::PATTERN_MODE) {
             current_view = dbox({current_view, hex_editor_pattern_renderer->Render() | center});
         } else {
             // HexView
@@ -288,390 +279,200 @@ int main(int argc, char* argv[]) {
         return current_view | size(WIDTH, EQUAL, 107);
     });
 
-    Controller controller;
+    InputHandler inputHandler;
 
     main_window_renderer |= CatchEvent([&](Event event) {
 
+        InputHandler::Command command = InputHandler::Command::NOP;
+         
+        switch (hexEditorMode) {
+            case HexEditorModes::VIEW_MODE:
 
-        Controller::Command command = controller.InputHandler(event, modalDepth);
+                command = inputHandler.ViewModeInputHandler(event);
 
-        if (command == Controller::Command::NOP) { return true; }
-
-        if (command == Controller::Command::ESCAPE) { modalDepth = 0; answer = "0x00"; return true; }
-
-        if (modalDepth == 0) {
-
-            if (command == Controller::Command::EDIT_MODE) { modalDepth = 1; return true; }
-            
-            if (command == Controller::Command::SELECTION_MODE) {
-                selectionMode ^= true;
-                selections.clear();
-                selections.push_back(yloc*16 + xloc);
-                selection_start = yloc*16 + xloc;
-                return true;
-            }
-
-            if (command == Controller::Command::PATTERN_MODE) {
-                modalDepth = 3;
-                if (pattern_component->ChildCount() == 0) {
-                    InputOption option;
-                    input_data.push_back({"", 0});
-                    option.placeholder = "0x00";
-                    option.multiline = false;
-                    option.content = &input_data.back().first;
-                    option.cursor_position = &input_data.back().second;
-                    option.transform = [](InputState state) {
-
-                        if (!state.focused) {
-                            state.element |= dim;
+                switch (command) {
+                    case InputHandler::Command::UP:
+                        if (yloc > 0) {
+                            yloc--;
+                            if (cursor_y > 0) { cursor_y--; } 
                         }
-                    
-                        return state.element | color(Color::White);  
-                    };
-                    pattern_component->Add(Input(option));
-                }
-                return true;
-            }
+                        break;
+                    case InputHandler::Command::DOWN:
+                        if (yloc < max_rows - 1) {
+                            yloc++;
+                            if (cursor_y < num_viewable_rows - 1) { cursor_y++; }
+                        }
+                        break;
+                    case InputHandler::Command::LEFT:
+                        if (xloc > 0) {
+                            xloc--;
+                            cursor_x--;
+                        }
+                        break;
+                    case InputHandler::Command::RIGHT:
+                        if (xloc < 15) {
+                            xloc++;
+                            cursor_x++;
+                        }
+                        break;
+                    case InputHandler::Command::ESCAPE:
 
-            if (command == Controller::Command::RIGHT) {
-                if (xloc < 15) {
-                    xloc++;
-                    cursor_x++;
-                }
-            } else if (command == Controller::Command::LEFT) {
-                if (xloc > 0) {
-                    xloc--;
-                    cursor_x--;
-                }
-            } else if (command == Controller::Command::DOWN) {
-                if (yloc < max_rows - 1) {
-                    yloc++;
-                    if (cursor_y < num_viewable_rows - 1) { cursor_y++; }
-                }
-            } else if (command == Controller::Command::UP) {
-                if (yloc > 0) {
-                    yloc--;
-                    if (cursor_y > 0) { cursor_y--; } 
-                }
-            } else {
-                // Do nothing
-            }
+                        hexEditorMode = HexEditorModes::VIEW_MODE;
 
-            if (selectionMode == false) {
-                selections.back() = yloc*16 + xloc;
-            } else {
-                selections.clear();
-                int end = yloc*16+xloc;
-                if (selection_start < end) {
-                    for (int i = selection_start; i <= end; i++) {
-                        selections.push_back(i);
-                    }
-                } else {
-                    for (int i = end; i <= selection_start; i++) {
-                        selections.push_back(i);
-                    }
-                }
-                
-            }
-           
-        } else if (modalDepth == 1) {
-            
-            if (event == Event::Return) {
+                        selectionMode = false;
+                        selections.clear();
+                        selections.push_back(yloc*16 + xloc);
 
-                if (std::regex_match(answer, hex_regex) == false) {
-                    return true;
-                }
-                
-                int tmp = (answer.empty()) ? 0x00 : std::stoi(answer, 0, 16);
-
-                if (selectionMode) {
-                    for (const auto idx : selections) {
-                        hexObject.set_byte(idx, static_cast<uint8_t>(tmp));
-                    }
-                } else {
-                    hexObject.set_byte(selections.back(), static_cast<uint8_t>(tmp));
-                    global_position = tmp;
-                }                
-
-                modalDepth = 0;
-            } else {
-                hex_editor_view->OnEvent(event);
-            }
-            
-        } else if (modalDepth == 2) {
-            
-        } else if (modalDepth == 3) {
-
-            if (event == Event::Return) {
-                
-                patterns.clear();
-
-                for (const auto& data : input_data) {
-                    if (data.first == "" || std::regex_match(data.first, hex_regex) == false) { continue; }
-                    uint64_t pattern_value = stoi(data.first, 0, 16);
-                    int num_bytes = (data.first.size() - 2) / 2;
-
-                    std::vector<std::byte> tmp;
-                    for (auto i = 0; i < num_bytes; i++) {
-                        std::byte byte = static_cast<std::byte>((pattern_value >> i*8) & 0xFF);
-                        tmp.push_back(byte);
-                    }
-                    std::reverse(tmp.begin(), tmp.end());
-                    patterns.push_back(tmp);
-                }
-                                    
-                hexObject.find_in_file(patterns);
-                modalDepth = 0;
-                UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
-                UpdateByteInterpreter(data_interpreter_view, yloc, xloc);
-                return true;
-            } else if (command == Controller::Command::NEW_PATTERN) {
-
-                InputOption option;
-                input_data.push_back({"", 0});
-                option.placeholder = "0x00";
-                option.multiline = false;
-                option.content = &input_data.back().first;
-                option.cursor_position = &input_data.back().second;
-                option.transform = [](InputState state) {
-
-                    if (!state.focused) {
-                        state.element |= dim;
-                    }
+                        answer = "";
                         
-                    return state.element | color(Color::White);  
-                };
-                pattern_component->Add(Input(option));
-                return true;
-            } else if (command == Controller::Command::DELETE_PATTERN) {
-                input_data.pop_back();
-                return true;
-            }
+                        break;
+                    case InputHandler::Command::SELECTION_MODE:
+                        selectionMode = true;
+                        selection_start = yloc*16 + xloc;
+                        break;
+                    case InputHandler::Command::EDIT_MODE:
+                        hexEditorMode = HexEditorModes::EDIT_MODE;
+                        break;
+                    case InputHandler::Command::PATTERN_MODE:
+                        hexEditorMode = HexEditorModes::PATTERN_MODE;
+                        break;
+                    case InputHandler::Command::NOP:
+                        return true;
+                        break;
+                    default:
+                        assert("View Mode: impossible");
+                        break;                    
+                }
 
-            return pattern_component->OnEvent(event); 
+                if (selectionMode == false) {
+                    selections.back() = yloc*16 + xloc;
+                } else {
+                    selections.clear();
+                    int end = yloc*16+xloc;
+                    if (selection_start < end) {
+                        for (int i = selection_start; i <= end; i++) {
+                            selections.push_back(i);
+                        }
+                    } else {
+                        for (int i = end; i <= selection_start; i++) {
+                            selections.push_back(i);
+                        }
+                    }
+                }
+                                
+                break;
+            case HexEditorModes::EDIT_MODE:
+                command = inputHandler.EditModeInputHandler(event);
 
-        } else {
+                switch (command) {
+                    case InputHandler::Command::ENTER: {
+                        
+                        if (!std::regex_match(answer, hex_regex)) { return true; }
 
-            assert("shouldn't happen");
+                        int tmp = (answer.empty()) ? 0x00 : std::stoi(answer, 0, 16);                        
 
+                        if (selectionMode) {
+                            for (const auto idx : selections) {
+                                hexObject.set_byte(idx, static_cast<uint8_t>(tmp));
+                            }
+                        } else {
+                            hexObject.set_byte(selections.back(), static_cast<uint8_t>(tmp));
+                        }                
+
+                        hexEditorMode = HexEditorModes::VIEW_MODE;
+
+                        break;
+                    }
+                    case InputHandler::Command::PASS:
+                        return hex_editor_view->OnEvent(event);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case HexEditorModes::PATTERN_MODE:
+
+                command = inputHandler.PatternModeInputHandler(event);
+
+                switch (command) {
+                    case InputHandler::Command::ENTER:
+
+                        patterns.clear();
+
+                        for (const auto& data : input_data) {
+                            if (data.first == "" || std::regex_match(data.first, hex_regex) == false) { continue; }
+                            uint64_t pattern_value = stoi(data.first, 0, 16);
+                            int num_bytes = (data.first.size() - 2) / 2;
+
+                            std::vector<std::byte> tmp;
+                            for (auto i = 0; i < num_bytes; i++) {
+                                std::byte byte = static_cast<std::byte>((pattern_value >> i*8) & 0xFF);
+                                tmp.push_back(byte);
+                            }
+                            std::reverse(tmp.begin(), tmp.end());
+                            patterns.push_back(tmp);
+                        }
+
+                        hexObject.find_in_file(patterns);
+                        hexEditorMode = HexEditorModes::VIEW_MODE;
+
+                        break;
+                    case InputHandler::Command::NEW_PATTERN: {
+                        
+                        InputOption option;
+                        input_data.push_back({"", 0});
+                        option.placeholder = "0x00";
+                        option.multiline = false;
+                        option.content = &input_data.back().first;
+                        option.cursor_position = &input_data.back().second;
+                        option.transform = [](InputState state) {
+
+                            if (!state.focused) {
+                                state.element |= dim;
+                            }
+                        
+                            return state.element | color(Color::White);  
+                        };
+                        pattern_component->Add(Input(option));
+
+                        return true;
+                        break;
+                    }
+                    case InputHandler::Command::DELETE_PATTERN:
+                        if (!input_data.empty()) { input_data.pop_back(); }
+                        return true;
+                        break;
+                    case InputHandler::Command::PASS:
+                        return pattern_component->OnEvent(event);
+                    default:
+                        break;
+
+                    break;
+                }
+            case HexEditorModes::COMMAND_MODE:
+
+                if (event == Event::Return) {
+                    if (answer == ":w") {
+                        hexObject.save_file();
+                    } else if (answer == ":q") {
+                        screen.Exit();
+                    } else {
+                        assert("Command Mode: command not implemented");
+                    }
+                } else {
+                    return hex_editor_command_view->OnEvent(event);
+                }
+                break;
+            default:
+                assert("Unsupported Mode");
+                break;
         }
 
         UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
         UpdateByteInterpreter(data_interpreter_view, yloc, xloc);
-        // if (event == Event::Escape) {
-
-        //     if (modalDepth == 3) {
-        //         if (RegexError::NO_REGEX_ERROR == ErrorInPatternInput(input_data)) {
-                    // patterns.clear();
-
-        //             for (const auto& data : input_data) {
-        //                 if (data.first == "") { continue; }
-        //                 uint64_t pattern_value = stoi(data.first, 0, 16);
-        //                 int num_bytes = (data.first.size() - 2) / 2;
-
-        //                 std::vector<std::byte> tmp;
-        //                 for (auto i = 0; i < num_bytes; i++) {
-        //                     std::byte byte = static_cast<std::byte>((pattern_value >> i*8) & 0xFF);
-        //                     tmp.push_back(byte);
-        //                 }
-        //                 std::reverse(tmp.begin(), tmp.end());
-        //                 patterns.push_back(tmp);
-        //             }
-                                        
-        //             hexObject.find_in_file(patterns);
-        //         } else {
-        //             return true;
-        //         }                
-        //     }
-            
-        //     modalDepth = 0;
-        //     answer.clear();
-
-        //     if (selectionMode == true) {
-        //         selections.clear();
-        //         selections.push_back(yloc*16 + xloc);
-        //         selectionMode = false;
-        //         UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
-        //     }
-            
-        //     return true;
-            
-        // }
-
-        // char c = event.character().at(0);
-
-        // if (c == ':') { modalDepth = 2; }
-
-        // if (c == 'Y') {
-        //     std::string tmp;
-            
-        //     for (const auto idx : selections) {
-        //         tmp += std::format("{:02X} ", static_cast<uint8_t>(hexObject.at(idx)));
-        //     }
-        //     AddToClipBoard(tmp);
-        // }
-
-        // if (c == 'f' && modalDepth != 3) {
-        //     if (pattern_component->ChildCount() == 0) {
-        //         InputOption option;
-        //         input_data.push_back({"", 0});
-        //         option.placeholder = "0x00";
-        //         option.multiline = false;
-        //         option.content = &input_data.back().first;
-        //         option.cursor_position = &input_data.back().second;
-    
-        //         pattern_component->Add(Input(option));
-        //     }
-            
-        //     modalDepth = 3;
-        //     return true;
-        // }
-
-        // if (modalDepth == 0 && event.is_character()) {
-            
-        //     if (c == 'r') { modalDepth = 1; return true; }
-        //     if (c == 'v') {
-        //         selectionMode ^= true;
-        //         selections.clear();
-        //         selections.push_back(yloc*16 + xloc);
-        //         selection_start = yloc*16 + xloc;
-        //     }
-
-        //     if (c == 'l') {
-        //         if (xloc < 15) {
-        //             xloc++;
-        //             cursor_x++;
-        //         }
-        //     } else if (c == 'h') {
-        //         if (xloc > 0) {
-        //             xloc--;
-        //             cursor_x--;
-        //         }
-        //     } else if (c == 'j') {
-        //         if (yloc < max_rows - 1) {
-        //             yloc++;
-        //             if (cursor_y < num_viewable_rows - 1) { cursor_y++; }
-        //         }
-        //     } else if (c == 'k') {
-        //         if (yloc > 0) {
-        //             yloc--;
-        //             if (cursor_y > 0) { cursor_y--; } 
-        //         }
-        //     } else {
-        //         // Do nothing
-        //     }
-            
-        //     if (selectionMode == false) {
-        //         selections.back() = yloc*16 + xloc;
-        //     } else {
-        //         selections.clear();
-        //         int end = yloc*16+xloc;
-        //         if (selection_start < end) {
-        //             for (int i = selection_start; i <= end; i++) {
-        //                 selections.push_back(i);
-        //             }
-        //         } else {
-        //             for (int i = end; i <= selection_start; i++) {
-        //                 selections.push_back(i);
-        //             }
-        //         }
-                
-        //     }
-
-        //     UpdateScreen(byte_view, ascii_view, address_view, yloc*16 + xloc);
-        //     UpdateByteInterpreter(data_interpreter_view, yloc, xloc);
-            
-        // } else if (modalDepth == 1) {
-
-        //     c = std::toupper(c);
-
-        //     if (event == Event::Return) {
-        //         int tmp = (answer.empty()) ? 0x00 : std::stoi(answer, nullptr, 16);
-        //         if (tmp > 0xFF) { assert("something went wrong"); }
-
-
-        //         if (selectionMode) {
-        //             for (const auto idx : selections) {
-        //                 hexObject.set_byte(idx, static_cast<uint8_t>(tmp));
-        //             }
-        //         } else {
-        //             hexObject.set_byte(selections.back(), static_cast<uint8_t>(tmp));
-        //             global_position = tmp;
-        //         }                
-
-        //         modalDepth = 0;
-        //         answer.clear();
-        //         return true;
-        //     }
-            
-        //     if (Event::Backspace == event || Event::ArrowLeft == event || Event::ArrowRight == event) {
-        //         return hex_editor_view->OnEvent(event);
-        //     }
-
-        //     if (answer.size() >= 4) { return true; }
-            
-        //     if (c == 'X') {
-        //         return hex_editor_view->OnEvent(Event::Character(static_cast<char>(std::tolower(c))));
-        //     }
-            
-        //     if (c <= '9' && c >= '0' || c <= 'F' && c >= 'A') {
-        //         return hex_editor_view->OnEvent(Event::Character(c));
-        //     }
-
-        // } else if (modalDepth == 3) {
-
-            // if (c == 'n') {
-            //     InputOption option;
-            //     input_data.push_back({"", 0});
-            //     option.placeholder = "0x00";
-            //     option.multiline = false;
-            //     option.content = &input_data.back().first;
-            //     option.cursor_position = &input_data.back().second;
-            //     pattern_component->Add(Input(option));
-            //     c = 0;
-            // } else if (c == 'N') {
-            //     input_data.pop_back();
-            //     c = 0;
-            // }
-
-            // pattern_component->DetachAllChildren();
-
-            // for (auto& config : input_data) {
-            //     InputOption input_option;
-            //     input_option.placeholder = "0x00";
-            //     input_option.multiline = false;
-            //     input_option.content = &config.first;
-            //     input_option.cursor_position = &config.second;
-                
-            //     if (std::regex_search(config.first, hex_regex)) {
-            //         pattern_component->Add(Input(input_option));
-            //     } else {
-            //         pattern_component->Add(Input(input_option) | color(ftxui::Color::Palette16::Red));
-            //     }
-            // }
-
-        //     if (c) { return pattern_component->OnEvent(event); }
-                                  
-        // } else {
-            
-        //     if (event == Event::Return) {
-                
-        //         if (answer == ":w") {
-        //             hexObject.save_file();
-        //         } else if (answer == ":q") {
-        //             screen.Exit();
-        //         } else {
-        //             assert("command not implemented");
-        //         }
-        //         answer.clear();
-        //         modalDepth = 0;
-        //         return true;                
-        //     }
-
-        //     return hex_editor_command_view->OnEvent(event);
-        // }
 
         return true;
+
     });
 
     Loop loop(&screen, main_window_renderer);
