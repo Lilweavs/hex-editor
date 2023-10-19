@@ -12,9 +12,9 @@ List of currently supported keybindings:
   -  `h` move cursor left (ie. jump back 1 byte)
   -  `v` toggle selection mode
   -  `r` edit byte(s) in selection
-  -  `y` **WIP**
+  -  `y` yank byte(s) in selection
   -  `Y` yank selection to system clipboard (Windows only as of now)
-  -  `p` **WIP**
+  -  `p` paste byte(s) at current selection
   -  `P` **WIP**
   -  `ESC` exit mode
   -  `f` open pattern view
