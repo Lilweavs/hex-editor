@@ -1,4 +1,5 @@
 #include "InputHandler.hpp"
+#include <ftxui/component/component_base.hpp>
 #include <ftxui/component/event.hpp>
 
 InputHandler::Command InputHandler::ViewModeInputHandler(const ftxui::Event& event) {
@@ -49,6 +50,8 @@ InputHandler::Command InputHandler::EditModeInputHandler(const ftxui::Event& eve
 
     if (event == ftxui::Event::Return) {
         command = Command::ENTER;   
+    } else if (event == ftxui::Event::Escape) {
+        command = Command::ESCAPE;
     } else {
         command = Command::PASS;
     }
@@ -75,6 +78,8 @@ InputHandler::Command InputHandler::PatternModeInputHandler(const ftxui::Event& 
     } else {
         if (event == ftxui::Event::Return) {
             command = Command::ENTER;   
+        } else if (event == ftxui::Event::Escape){
+            command = Command::ESCAPE;
         } else {
             command = Command::PASS;
         }

@@ -49,6 +49,13 @@ enum class HexEditorModes {
     COMMAND_MODE,
 };
 
+constexpr int addressViewSize = 8;
+constexpr int byteViewSize = 3 * 16 - 1;
+constexpr int asciiViewSize = 16;
+constexpr int interpreterViewSize = 35;
+constexpr int hexEditorSize = addressViewSize + byteViewSize + asciiViewSize + interpreterViewSize + 3;
+
+
 std::regex hex_regex("0[xX][0-9a-fA-F]+");
 
 int get_viewable_text_rows(ftxui::Screen &screen) { return screen.dimy() - 4; }
@@ -140,19 +147,6 @@ void UpdateByteInterpreter(ftxui::Elements& byte_interpreter_view, int row, int 
     byte_interpreter_view.push_back(ftxui::text(std::format("double  {}", *reinterpret_cast<const double*>(hexObject.get_ptr_at_index(idx)))));
 }
 
-enum class RegexError { NO_REGEX_ERROR, REGEX_ERROR };
-
-RegexError ErrorInPatternInput(const std::vector<std::pair<std::string, int>>& input_data) {
-
-    for (const auto& data : input_data) {
-        if (data.first.empty()) { continue; }
-        if (std::regex_search(data.first, hex_regex) == false) {
-            return RegexError::REGEX_ERROR;
-        }               
-    }
-
-    return RegexError::NO_REGEX_ERROR;
-}
 
 int main(int argc, char* argv[]) {
 
@@ -184,24 +178,24 @@ int main(int argc, char* argv[]) {
     Elements address_view;
     Elements data_interpreter_view;
 
-    int modalDepth = 0;
-
     int xloc = 0;
     int yloc = 0;
 
-    std::string ydimText;
-    bool replaceMode = false;
     HexEditorModes hexEditorMode = HexEditorModes::VIEW_MODE;
 
     UpdateScreen(byte_view, ascii_view, address_view, 0);
+    UpdateByteInterpreter(data_interpreter_view, yloc, xloc);
 
-    std::string answer = "0x00";
+    std::string answer = "";
     int editor_cursor_position = answer.size() + 1;
     InputOption editor_input_options;
     editor_input_options.content = &answer;
+    editor_input_options.placeholder = "0x00";
     editor_input_options.multiline = false;
 
     editor_input_options.transform = [&](InputState state) {
+
+        if (state.is_placeholder) { return state.element |= dim; }
 
         if (std::regex_match(answer, hex_regex)) {
             state.element |= color(Color::White);
@@ -231,37 +225,46 @@ int main(int argc, char* argv[]) {
             hex_editor_command_view->Render()) | size(WIDTH, EQUAL, 48) | size(HEIGHT, EQUAL, 3) | clear_under;
     });
     
-    auto hex_viewer_renderer = Renderer([&] {
-        return vbox({
-            text(std::format("{} {}:{}", selections.size(), yloc, xloc)),
-            separator(),
-            hbox({
-                vbox(address_view) | size(WIDTH, EQUAL, 8),
-                separator(),
-                vbox(byte_view) | size(WIDTH, EQUAL, 3 * 16 - 1),
-                separator(),
-                vbox(ascii_view) | size(WIDTH, EQUAL, 16),
-                separator(),
-                vbox(data_interpreter_view)
-            })
-        }) | border;
-    });
 
     std::vector<std::vector<std::byte>> patterns;
     std::vector<std::pair<std::string, int>> input_data;
-
     input_data.reserve(10);
-    
     Components pattern_input_components;
-
     auto pattern_component = Container::Vertical({});
-
+   
     auto hex_editor_pattern_renderer = Renderer([&] {
         return window(
             text(std::format(" Pattern View ")),
             vbox(pattern_component->Render())
         ) | clear_under;
     });
+    
+    auto hex_viewer_renderer = Renderer([&] {
+        return vbox({
+            text(std::format("{} {}:{}", selections.size(), yloc, xloc)),
+            separator(),
+            hbox({
+                vbox(address_view) | size(WIDTH, EQUAL, addressViewSize),
+                separator(),
+                vbox(byte_view) | size(WIDTH, EQUAL, byteViewSize),
+                separator(),
+                vbox(ascii_view) | size(WIDTH, EQUAL, asciiViewSize),
+                separator(),
+                vbox(data_interpreter_view,
+                     separator(), 
+                     hex_editor_pattern_renderer->Render()) | size(WIDTH, EQUAL, interpreterViewSize)
+            })
+        }) | border;
+    });
+
+
+    // auto hex_editor_pattern_renderer = Renderer([&] {
+    //     return window(
+    //         text(std::format(" Pattern View ")),
+    //         vbox(pattern_component->Render())
+    //     ) | clear_under;
+    // });
+
 
     auto main_window_renderer = Renderer([&] {
         Element current_view = hex_viewer_renderer->Render();
@@ -270,13 +273,13 @@ int main(int argc, char* argv[]) {
             current_view = dbox({current_view, hex_editor_renderer->Render() | center});
         } else if (hexEditorMode == HexEditorModes::COMMAND_MODE) {
             current_view = dbox({current_view, hex_editor_command_renderer->Render() | center});
-        } else if (hexEditorMode == HexEditorModes::PATTERN_MODE) {
-            current_view = dbox({current_view, hex_editor_pattern_renderer->Render() | center});
+        // } else if (hexEditorMode == HexEditorModes::PATTERN_MODE) {
+            // current_view = dbox({current_view, hex_editor_pattern_renderer->Render() | center});
         } else {
             // HexView
         }
 
-        return current_view | size(WIDTH, EQUAL, 107);
+        return current_view | size(WIDTH, EQUAL, hexEditorSize);
     });
 
     InputHandler inputHandler;
@@ -362,15 +365,19 @@ int main(int argc, char* argv[]) {
                                 
                 break;
             case HexEditorModes::EDIT_MODE:
+
                 command = inputHandler.EditModeInputHandler(event);
 
                 switch (command) {
                     case InputHandler::Command::ENTER: {
+
+                        int tmp = 0x00;
                         
-                        if (!std::regex_match(answer, hex_regex)) { return true; }
-
-                        int tmp = (answer.empty()) ? 0x00 : std::stoi(answer, 0, 16);                        
-
+                        if (!answer.empty()) {
+                            if (!std::regex_match(answer, hex_regex)) { return true; }
+                            tmp = std::stoi(answer, 0, 16);
+                        }
+                                                
                         if (selectionMode) {
                             for (const auto idx : selections) {
                                 hexObject.set_byte(idx, static_cast<uint8_t>(tmp));
@@ -380,9 +387,14 @@ int main(int argc, char* argv[]) {
                         }                
 
                         hexEditorMode = HexEditorModes::VIEW_MODE;
-
+                    
                         break;
                     }
+                    case InputHandler::Command::ESCAPE:
+
+                        hexEditorMode = HexEditorModes::VIEW_MODE;
+
+                        break;
                     case InputHandler::Command::PASS:
                         return hex_editor_view->OnEvent(event);
                         break;
@@ -426,7 +438,7 @@ int main(int argc, char* argv[]) {
                         option.content = &input_data.back().first;
                         option.cursor_position = &input_data.back().second;
                         option.transform = [](InputState state) {
-
+                            
                             if (!state.focused) {
                                 state.element |= dim;
                             }
@@ -440,7 +452,10 @@ int main(int argc, char* argv[]) {
                     }
                     case InputHandler::Command::DELETE_PATTERN:
                         if (!input_data.empty()) { input_data.pop_back(); }
-                        return true;
+                        pattern_component->Detach();
+                        break;
+                    case InputHandler::Command::ESCAPE:
+                        hexEditorMode = HexEditorModes::VIEW_MODE;
                         break;
                     case InputHandler::Command::PASS:
                         return pattern_component->OnEvent(event);
