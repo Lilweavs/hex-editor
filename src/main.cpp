@@ -42,6 +42,8 @@ std::vector<int> matches;
 std::vector<int> match_colors;
 std::vector<int> selections = {0};
 
+std::vector<std::byte> yank_buffer;
+
 enum class HexEditorModes {
     VIEW_MODE,
     EDIT_MODE,
@@ -54,7 +56,6 @@ constexpr int byteViewSize = 3 * 16 - 1;
 constexpr int asciiViewSize = 16;
 constexpr int interpreterViewSize = 35;
 constexpr int hexEditorSize = addressViewSize + byteViewSize + asciiViewSize + interpreterViewSize + 3;
-
 
 std::regex hex_regex("0[xX][0-9a-fA-F]+");
 
@@ -339,6 +340,17 @@ int main(int argc, char* argv[]) {
                     case InputHandler::Command::PATTERN_MODE:
                         hexEditorMode = HexEditorModes::PATTERN_MODE;
                         break;
+                    case InputHandler::Command::YANK:
+                        yank_buffer.clear();
+                        for (const auto idx : selections) { yank_buffer.push_back(hexObject.at(idx)); }
+                        break;
+                    case InputHandler::Command::PASTE:
+
+                        if (yank_buffer.empty()) { return true; }
+
+                        hexObject.set_bytes(selections.back(), yank_buffer);
+
+                        break;
                     case InputHandler::Command::NOP:
                         return true;
                         break;
@@ -377,15 +389,9 @@ int main(int argc, char* argv[]) {
                             if (!std::regex_match(answer, hex_regex)) { return true; }
                             tmp = std::stoi(answer, 0, 16);
                         }
-                                                
-                        if (selectionMode) {
-                            for (const auto idx : selections) {
-                                hexObject.set_byte(idx, static_cast<uint8_t>(tmp));
-                            }
-                        } else {
-                            hexObject.set_byte(selections.back(), static_cast<uint8_t>(tmp));
-                        }                
 
+                        hexObject.set_bytes(selections.front(), selections, static_cast<std::byte>(tmp));
+                        
                         hexEditorMode = HexEditorModes::VIEW_MODE;
                     
                         break;

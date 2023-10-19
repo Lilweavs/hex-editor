@@ -30,6 +30,12 @@ InputHandler::Command InputHandler::ViewModeInputHandler(const ftxui::Event& eve
             case 'f':            
                 command = Command::PATTERN_MODE;            
                 break;
+            case 'y':
+                command = Command::YANK;
+                break;
+            case 'p':
+                command = Command::PASTE;
+                break;
             default:
                 break;
         }

@@ -25,7 +25,9 @@ public:
         NEW_PATTERN,
         DELETE_PATTERN,
         PASS,
-        ENTER
+        ENTER,
+        YANK,
+        PASTE
     };
     
     InputHandler::Command ViewModeInputHandler(const ftxui::Event& event);

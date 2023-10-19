@@ -24,7 +24,9 @@ public:
 
     size_t get_binary_data_from_file();
 
-    void set_byte(int idx, uint8_t byte); 
+    void set_bytes(int idx, std::vector<int>& selections, std::byte value);
+
+    void set_bytes(const int idx, const std::vector<std::byte>& bytes); 
     
     std::byte* get_ptr_at_index(int idx);
     

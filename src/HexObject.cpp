@@ -1,4 +1,5 @@
 #include "HexObject.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <istream>
@@ -40,9 +41,21 @@ std::byte& HexObject::at(int idx) {
     return data[idx];    
 }
 
-void HexObject::set_byte(int idx, uint8_t byte) {
-    data[idx] = static_cast<std::byte>(byte);   
+void HexObject::set_bytes(int idx, std::vector<int>& selections, std::byte value) {
+    if (int tmp = fileSize - (idx + selections.size()); (idx + selections.size()) > fileSize) {
+        std::fill_n(&data[idx], tmp, value);
+    } else {
+        std::fill_n(&data[idx], selections.size(), value);
+    }
 } 
+
+void HexObject::set_bytes(int idx, const std::vector<std::byte>& bytes) {
+    if (int tmp = fileSize - (idx + bytes.size()); (idx + bytes.size()) > fileSize) {
+        std::copy(bytes.begin(), bytes.begin() + tmp, &data[idx]);
+    } else {
+        std::copy(bytes.begin(), bytes.end(), &data[idx]);
+    }
+}
 
 std::byte* HexObject::begin() {
     return data;
